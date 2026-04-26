@@ -236,7 +236,7 @@ S3_SECRET_KEY=
 |-------|----------------------------------------------------|---------|
 | 0     | Repo init, ARCHITECTURE.md, base scaffolding       | Done    |
 | 1     | Content engine (parser + renderer), SQLite schema  | Done    |
-| 2     | REST API (pages + auth)                            | Pending |
+| 2     | REST API (pages read + write, no auth yet)         | ✅ Done  |
 | 3     | Admin UI (list, edit, publish)                     | Pending |
 | 4     | Public site renderer + default theme               | Pending |
 | 5     | Media upload + storage abstraction                 | Pending |

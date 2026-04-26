@@ -25,8 +25,8 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 |-------|------------------------------------------|-------------|
 | 0     | Repo init, architecture, base scaffolding | ✅ Done     |
 | 1     | Content engine (parser + renderer + DB)  | ✅ Done     |
-| 2     | REST API (pages + auth)                  | 🔜 Next     |
-| 3     | Admin UI (list, edit, publish)           | Pending     |
+| 2     | REST API (read + write, no auth yet)     | ✅ Done     |
+| 3     | Auth (JWT) + Admin UI (server-rendered)  | 🔜 Next     |
 | 4     | Public site renderer + default theme     | Pending     |
 | 5     | Media upload + storage abstraction       | Pending     |
 | 6     | CLI (vlcms admin commands)               | Pending     |
@@ -125,6 +125,64 @@ npm run dev         # tsx watch — hot reload
 npm run build       # tsc → dist/
 npm run typecheck   # tsc --noEmit (zero errors required)
 npm test            # vitest run
+```
+
+---
+
+## API Reference
+
+All endpoints return JSON with a consistent envelope:
+
+```json
+// Success
+{ "data": { ... } }
+
+// Error
+{ "error": "message", "code": 404 }
+```
+
+### Pages — read (public)
+
+```bash
+# List published pages (paginated)
+GET /api/pages?limit=20&offset=0
+
+# Get a single published page with rendered HTML
+GET /api/pages/:slug
+```
+
+### Pages — write (no auth — Phase 3 adds JWT)
+
+```bash
+# Create a page (draft=true by default — safe default)
+POST /api/pages
+Content-Type: application/json
+{
+  "title": "Hello World",
+  "slug": "hello-world",      # optional — derived from title if omitted
+  "description": "...",       # optional
+  "tags": ["intro"],          # optional
+  "draft": false,             # optional, default: true
+  "body": "Markdown content." # optional
+}
+
+# Update a page (slug is immutable)
+PUT /api/pages/:slug
+Content-Type: application/json
+{ "title": "New Title", "body": "Updated body.", "draft": false }
+
+# Soft-delete (sets draft=1, invisible in public API)
+DELETE /api/pages/:slug
+
+# Hard-delete (removes file + DB row — irreversible)
+DELETE /api/pages/:slug?permanent=true
+```
+
+### Health
+
+```bash
+GET /health
+# → { "status": "ok", "version": "0.1.0" }
 ```
 
 ---

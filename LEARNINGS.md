@@ -5,6 +5,49 @@ Updated continuously. Newest entries at the top.
 
 ---
 
+## Phase 2 — REST API (2026-04-26)
+
+### Mounting read + write routers on the same path
+Hono allows two routers (`pages` + `pagesWrite`) to be mounted at the same base path (`/api/pages`). GET routes in one router don't conflict with POST/PUT/DELETE in the other — HTTP method dispatching resolves correctly. Pattern: mount order matters only when routes are identical in both path and method.
+
+---
+
+### Soft delete as safe default
+`DELETE /api/pages/:slug` defaults to `draft=1` (soft delete) — the row stays in DB, the file stays on disk. The page simply disappears from the public API. `?permanent=true` triggers hard delete. This matches the "reversible by default" principle and protects against accidental data loss.
+
+---
+
+### Slug immutability — enforced by omission
+The PUT handler doesn't accept a `slug` field in `UpdateSchema`. The slug is the URL key and the filename — changing it would break existing links and orphan the file. Immutability is enforced by simply not supporting the field, not by a runtime guard.
+
+---
+
+### Rollback pattern for file + DB writes
+POST creates the `.md` file first, then inserts the DB row. If the DB insert fails, the file must be cleaned up:
+
+```typescript
+try {
+  db.prepare(...).run(...);
+} catch {
+  try { unlinkSync(filePath); } catch { /* ignore */ }
+  return fail(c, "Failed to save page to database", 500);
+}
+```
+
+The reverse (write file on DB success) would leave a DB row without a file — harder to detect. File-first + rollback is the safer order.
+
+---
+
+### Test isolation: temp dir + in-memory DB per test
+Each test gets a fresh `:memory:` DB (schema applied programmatically) and a unique temp dir under `os.tmpdir()`. `afterEach` closes the DB and removes the temp dir. This avoids test pollution without any global state and makes tests order-independent.
+
+---
+
+### `require()` in test helpers — ESM gotcha
+One test helper used `require("node:fs")` which fails in ESM. Pattern: always use `await import("node:fs")` or top-level static imports in ESM test files. `require()` is blocked at runtime even inside test utilities.
+
+---
+
 ## Phase 1 — Content Engine (2026-04-26)
 
 ### `marked.parse()` type ambiguity
