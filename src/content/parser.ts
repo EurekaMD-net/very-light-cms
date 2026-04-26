@@ -20,24 +20,26 @@ export function parse(raw: string, filenameHint = ""): ContentNode {
 
   const { data, content } = matter(raw);
 
-  // Normalize frontmatter — title is the only required field
-  const meta: FrontMatter = {
-    title: "Untitled",
-    ...data,
-  };
+  // Normalize frontmatter — no defaults injected; keep raw YAML values as-is.
+  const meta: FrontMatter = { ...data };
 
   // Derive slug: frontmatter.slug > title > filename hint
   const slug =
     typeof meta.slug === "string" && meta.slug.trim() !== ""
       ? meta.slug
-      : meta.title !== "Untitled"
+      : typeof meta.title === "string" && meta.title.trim() !== ""
       ? slugify(meta.title)
       : filenameHint !== ""
       ? slugify(filenameHint)
       : "untitled";
 
   // Render Markdown → HTML (synchronous, no async marked plugins)
-  const html = marked.parse(content, { async: false }) as string;
+  // marked.parse() returns string | Promise<string>; we force sync and guard the type.
+  const result = marked.parse(content, { async: false });
+  const html = typeof result === "string" ? result : "";
 
   return { slug, meta, raw, html };
 }
+
+/** Alias for backward-compatible import in tests. */
+export const parseContent = parse;

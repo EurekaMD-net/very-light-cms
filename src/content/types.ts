@@ -1,5 +1,5 @@
 export interface FrontMatter {
-  title: string;
+  title?: string;
   slug?: string;
   date?: string;
   description?: string;
