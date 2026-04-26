@@ -235,7 +235,7 @@ S3_SECRET_KEY=
 | Phase | Scope                                              | Status  |
 |-------|----------------------------------------------------|---------|
 | 0     | Repo init, ARCHITECTURE.md, base scaffolding       | Done    |
-| 1     | Content engine (parser + renderer), SQLite schema  | Pending |
+| 1     | Content engine (parser + renderer), SQLite schema  | Done    |
 | 2     | REST API (pages + auth)                            | Pending |
 | 3     | Admin UI (list, edit, publish)                     | Pending |
 | 4     | Public site renderer + default theme               | Pending |
@@ -244,4 +244,4 @@ S3_SECRET_KEY=
 
 ---
 
-*Last updated: 2026-04-26 — Phase 0*
+*Last updated: 2026-04-26 — Phase 1 complete*
