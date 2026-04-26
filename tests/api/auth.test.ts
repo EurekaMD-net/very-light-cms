@@ -1,0 +1,201 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { Hono } from "hono";
+import { authRouter } from "../../src/api/auth.js";
+import { admin } from "../../src/admin/router.js";
+import { apiAuthGuard } from "../../src/admin/middleware.js";
+import { pagesWrite } from "../../src/api/pages-write.js";
+import { getDatabase, closeDatabase } from "../../src/db/database.js";
+import { hashPassword } from "../../src/lib/auth.js";
+import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+// Use in-memory DB + temp content dir for isolation
+process.env.DB_PATH = ":memory:";
+const testContentDir = "/tmp/vlcms-auth-test-content";
+process.env.CONTENT_DIR = testContentDir;
+
+function buildApp() {
+  const app = new Hono();
+  app.route("/api/auth", authRouter);
+  app.use("/api/pages", apiAuthGuard);
+  app.route("/api/pages", pagesWrite);
+  return app;
+}
+
+async function seedUser(email: string, password: string, role = "admin") {
+  const db = getDatabase();
+  const hash = await hashPassword(password);
+  db.prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)").run(
+    email,
+    hash,
+    role
+  );
+}
+
+describe("POST /api/auth/login", () => {
+  beforeEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+    mkdirSync(testContentDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+  });
+
+  it("returns 200 + sets cookie on valid credentials", async () => {
+    await seedUser("admin@test.com", "secret123");
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@test.com", password: "secret123" }),
+    });
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie");
+    expect(cookie).toMatch(/token=/);
+    expect(cookie).toMatch(/HttpOnly/i);
+  });
+
+  it("returns 401 on wrong password", async () => {
+    await seedUser("admin@test.com", "secret123");
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@test.com", password: "wrongpass" }),
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBeTruthy();
+  });
+
+  it("returns 401 on unknown email", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "nobody@test.com", password: "secret123" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 on missing fields", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "test@test.com" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 on invalid email format", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "not-an-email", password: "secret123" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/auth/logout", () => {
+  it("clears the token cookie", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/logout", { method: "POST" });
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    // Cookie cleared: max-age=0 or expires in the past, or token=""
+    expect(cookie.toLowerCase()).toMatch(/token=|max-age=0/);
+  });
+});
+
+describe("GET /api/auth/me", () => {
+  beforeEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+    mkdirSync(testContentDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    closeDatabase();
+  });
+
+  it("returns 401 when no cookie", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/me");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns userId + role with valid cookie", async () => {
+    await seedUser("me@test.com", "pass123", "editor");
+    const app = buildApp();
+
+    // Login to get the cookie
+    const loginRes = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "me@test.com", password: "pass123" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const tokenMatch = cookie.match(/token=([^;]+)/);
+    const token = tokenMatch?.[1] ?? "";
+
+    const meRes = await app.request("/api/auth/me", {
+      headers: { Cookie: `token=${token}` },
+    });
+    expect(meRes.status).toBe(200);
+    const body = await meRes.json() as { data: { role: string } };
+    expect(body.data.role).toBe("editor");
+  });
+});
+
+describe("API write routes — auth guard", () => {
+  beforeEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+    mkdirSync(testContentDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+  });
+
+  it("returns 401 on POST /api/pages without token", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/pages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Test", body: "hello" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("allows POST /api/pages with valid Bearer token", async () => {
+    await seedUser("writer@test.com", "pass123", "editor");
+    const app = buildApp();
+
+    const loginRes = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "writer@test.com", password: "pass123" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const tokenMatch = cookie.match(/token=([^;]+)/);
+    const bearerToken = tokenMatch?.[1] ?? "";
+
+    const createRes = await app.request("/api/pages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${bearerToken}`,
+      },
+      body: JSON.stringify({ title: "Guarded Page", body: "content here" }),
+    });
+    expect(createRes.status).toBe(201);
+  });
+});

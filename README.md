@@ -14,7 +14,7 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 | Database   | SQLite (better-sqlite3) |
 | Content    | Markdown + YAML frontmatter (gray-matter + marked) |
 | Templates  | Server-rendered HTML strings (no client JS) |
-| Auth       | JWT (Phase 2) |
+| Auth       | JWT + httpOnly cookie (Phase 3) |
 | Runtime    | Node.js 20+ ESM, TypeScript |
 
 ---
@@ -151,11 +151,29 @@ GET /api/pages?limit=20&offset=0
 GET /api/pages/:slug
 ```
 
-### Pages — write (no auth — Phase 3 adds JWT)
+### Auth
 
 ```bash
+# Login — returns httpOnly cookie + JSON { data: { ok: true } }
+POST /api/auth/login
+Content-Type: application/json
+{ "email": "admin@example.com", "password": "secret" }
+
+# Logout — clears the token cookie
+POST /api/auth/logout
+
+# Whoami — reads cookie, returns current user
+GET /api/auth/me
+```
+
+### Pages — write (JWT required — Bearer or cookie)
+
+```bash
+# All write routes require Authorization: Bearer <token>  (or the httpOnly cookie)
+
 # Create a page (draft=true by default — safe default)
 POST /api/pages
+Authorization: Bearer <token>
 Content-Type: application/json
 {
   "title": "Hello World",
@@ -176,6 +194,30 @@ DELETE /api/pages/:slug
 
 # Hard-delete (removes file + DB row — irreversible)
 DELETE /api/pages/:slug?permanent=true
+```
+
+### Admin UI
+
+Server-rendered, no client-side JavaScript. Auth via httpOnly JWT cookie.
+
+```
+GET  /admin/login          → Login form
+POST /admin/login          → Authenticate → set cookie → redirect /admin
+GET  /admin/logout         → Clear cookie → redirect /admin/login
+GET  /admin                → Pages list (auth required)
+GET  /admin/pages/new      → New page form (auth required)
+POST /admin/pages          → Create page → redirect /admin
+GET  /admin/pages/:slug/edit  → Edit form (auth required)
+POST /admin/pages/:slug       → Update page → redirect /admin
+POST /admin/pages/:slug/publish   → Set draft=0 → redirect /admin
+POST /admin/pages/:slug/unpublish → Set draft=1 → redirect /admin
+POST /admin/pages/:slug/delete    → Soft-delete → redirect /admin
+```
+
+**First-run setup** — create the admin user before accessing the UI:
+
+```bash
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=secret npm run seed:admin
 ```
 
 ### Health

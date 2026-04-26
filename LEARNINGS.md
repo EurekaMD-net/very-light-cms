@@ -118,3 +118,28 @@ const schemaPath = join(__dirname, "schema.sql");
 
 ### Remote must be `EurekaMD-net/` — verified before every push
 Protocol: `git remote -v` before `git_push`. Remote must point to `https://github.com/EurekaMD-net/...`. No exceptions.
+
+---
+
+## Phase 3 — Auth + Admin UI (2026-04-26)
+
+### `config` as module-level const breaks test env isolation
+When `config` is evaluated at module parse time (ESM), `process.env` overrides set in test files arrive too late — vitest hoists `import` statements above top-level test code. Fix: read env vars lazily inside the function that uses them (e.g., `resolveDbPath()` inside `getDatabase()`), not in a module-level `const config`.
+
+### Hono route mount + trailing slash
+`app.route("/admin", admin)` maps `admin.get("/")` to `GET /admin` (no trailing slash). Tests must request `/admin`, not `/admin/` — Hono doesn't auto-redirect trailing slashes by default.
+
+### httpOnly cookie security
+For Admin UI auth, cookies are safer than `Authorization` headers — HTML `<form>` submits automatically include cookies, Bearer tokens require JavaScript. `httpOnly: true` prevents XSS from reading the token. `sameSite: "Lax"` blocks CSRF from cross-origin form submissions while allowing top-level navigations.
+
+### Dual auth guard (cookie + Bearer)
+`apiAuthGuard` accepts both: `Authorization: Bearer <token>` for headless clients and the httpOnly cookie for same-origin UI requests. This makes the API usable from both contexts without duplicating logic.
+
+### bcrypt in tests — async, slow
+`hashPassword()` uses `bcryptjs` with cost factor 10 (~100ms). Test suites that seed multiple users add latency. For large test suites, consider `BCRYPT_ROUNDS=4` env override in test config. For now, the suite is fast enough.
+
+### Slug immutability — admin form pattern
+Edit form: render slug as `readonly` input. Don't send it in the PUT body (or ignore it server-side). This prevents slug drift while giving the user visibility of the current URL.
+
+### `buildMarkdown()` helper — keep frontmatter canonical
+All writes (create, update, publish/unpublish) go through a single `buildMarkdown()` helper. This ensures frontmatter stays consistent and avoids drift between DB and file states.
