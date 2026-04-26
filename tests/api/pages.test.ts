@@ -51,8 +51,7 @@ function seedPage(
 
 function writeFixture(slug: string, title: string, body = "Hello world.") {
   const md = `---\ntitle: "${title}"\nslug: "${slug}"\ndraft: false\n---\n${body}`;
-  const { writeFileSync } = require("node:fs");
-  require("node:fs").writeFileSync(join(testContentDir, `${slug}.md`), md, "utf-8");
+  writeFileSync(join(testContentDir, `${slug}.md`), md, "utf-8");
 }
 
 // ── Setup / teardown ───────────────────────────────────────────────────────────

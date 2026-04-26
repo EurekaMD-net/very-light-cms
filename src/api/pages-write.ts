@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { getDatabase } from "../db/database.js";
 import { config } from "../config.js";
@@ -161,7 +161,6 @@ pagesWrite.put("/:slug", async (c) => {
     // Read current body if body not being replaced
     let bodyContent = input.body ?? "";
     if (input.body === undefined && existsSync(filePath)) {
-      const { readFileSync } = await import("node:fs");
       const raw = readFileSync(filePath, "utf-8");
       // Strip existing frontmatter — everything after the closing ---
       const match = raw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
