@@ -9,7 +9,7 @@ export function ok<T>(c: Context, data: T, status: 200 | 201 = 200) {
 export function fail(
   c: Context,
   message: string,
-  status: 400 | 404 | 409 | 422 | 500 = 500,
+  status: 400 | 401 | 403 | 404 | 409 | 422 | 500 = 500,
   code?: string,
 ) {
   return c.json(
@@ -21,6 +21,8 @@ export function fail(
 function httpCodeLabel(status: number): string {
   const labels: Record<number, string> = {
     400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
     404: "NOT_FOUND",
     409: "CONFLICT",
     422: "UNPROCESSABLE",
