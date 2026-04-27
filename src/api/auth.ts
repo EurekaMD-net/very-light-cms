@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { setCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { getDatabase } from "../db/database.js";
-import { signToken, verifyToken, verifyPassword } from "../lib/auth.js";
+import { signToken, verifyPassword } from "../lib/auth.js";
 import { ok, fail } from "../lib/response.js";
 import { apiAuthGuard } from "../admin/middleware.js";
+import { authCookieOptions } from "../lib/cookie.js";
 
 const authRouter = new Hono();
 
@@ -28,8 +29,12 @@ authRouter.post("/login", async (c) => {
   const { email, password } = parsed.data;
   const db = getDatabase();
   const user = db
-    .prepare("SELECT id, role, password_hash FROM users WHERE email = ? LIMIT 1")
-    .get(email) as { id: number; role: string; password_hash: string } | undefined;
+    .prepare(
+      "SELECT id, role, password_hash FROM users WHERE email = ? LIMIT 1",
+    )
+    .get(email) as
+    | { id: number; role: string; password_hash: string }
+    | undefined;
 
   if (!user) {
     return fail(c, "Invalid credentials", 401);
@@ -42,12 +47,7 @@ authRouter.post("/login", async (c) => {
 
   const token = signToken(String(user.id), user.role);
 
-  setCookie(c, "token", token, {
-    httpOnly: true,
-    path: "/",
-    sameSite: "Lax",
-    maxAge: 60 * 60 * 8, // 8 hours
-  });
+  setCookie(c, "token", token, authCookieOptions());
 
   return ok(c, { token, userId: String(user.id), role: user.role });
 });

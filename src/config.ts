@@ -12,11 +12,28 @@ function optional(key: string, fallback: string): string {
 
 export const config = {
   port: parseInt(optional("PORT", "3333"), 10),
-  dbPath: (() => { const p = optional("DB_PATH", "./data/cms.db"); return p === ":memory:" ? p : resolve(p); })(),
-  get contentDir(): string { const p = optional("CONTENT_DIR", "./content/pages"); return resolve(p); },
-  get jwtSecret(): string { return required("JWT_SECRET"); },
+  dbPath: (() => {
+    const p = optional("DB_PATH", "./data/cms.db");
+    return p === ":memory:" ? p : resolve(p);
+  })(),
+  get contentDir(): string {
+    const p = optional("CONTENT_DIR", "./content/pages");
+    return resolve(p);
+  },
+  get jwtSecret(): string {
+    return required("JWT_SECRET");
+  },
   jwtExpiresIn: optional("JWT_EXPIRES_IN", "8h"),
-  get uploadDir(): string { const p = optional("UPLOAD_DIR", "./uploads"); return resolve(p); },
+  get uploadDir(): string {
+    const p = optional("UPLOAD_DIR", "./uploads");
+    return resolve(p);
+  },
+  get cookieSecure(): boolean {
+    const flag = process.env["COOKIE_SECURE"];
+    if (flag === "true") return true;
+    if (flag === "false") return false;
+    return process.env["NODE_ENV"] === "production";
+  },
   adminEmail: optional("ADMIN_EMAIL", "admin@example.com"),
 };
 

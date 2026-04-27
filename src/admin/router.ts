@@ -8,7 +8,12 @@ import { pagesListView } from "./views/pages-list.js";
 import { pageEditView } from "./views/page-edit.js";
 import { escHtml } from "./views/layout.js";
 import { mediaListView, mediaUploadView } from "./views/media-list.js";
-import { LocalDriver, ALLOWED_MIME_TYPES, MAX_UPLOAD_BYTES } from "../lib/storage.js";
+import {
+  LocalDriver,
+  ALLOWED_MIME_TYPES,
+  MAX_UPLOAD_BYTES,
+} from "../lib/storage.js";
+import { authCookieOptions } from "../lib/cookie.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -27,34 +32,42 @@ admin.get("/login", (c) => {
 
 admin.post("/login", async (c) => {
   const body = await c.req.parseBody();
-  const email = String(body["email"] ?? "").trim().toLowerCase();
+  const email = String(body["email"] ?? "")
+    .trim()
+    .toLowerCase();
   const password = String(body["password"] ?? "");
 
   if (!email || !password) {
-    return c.html(loginView({ error: "Email and password are required." }), 400);
+    return c.html(
+      loginView({ error: "Email and password are required." }),
+      400,
+    );
   }
 
   const db = getDatabase();
   const user = db
-    .prepare("SELECT id, email, password_hash, role FROM users WHERE email = ? LIMIT 1")
-    .get(email) as { id: number; email: string; password_hash: string; role: string } | undefined;
+    .prepare(
+      "SELECT id, email, password_hash, role FROM users WHERE email = ? LIMIT 1",
+    )
+    .get(email) as
+    | { id: number; email: string; password_hash: string; role: string }
+    | undefined;
 
-  const valid = user ? await verifyPassword(password, user.password_hash) : false;
+  const valid = user
+    ? await verifyPassword(password, user.password_hash)
+    : false;
 
   if (!valid) {
     return c.html(loginView({ error: "Invalid email or password." }), 401);
   }
 
   // Update last_login
-  db.prepare("UPDATE users SET last_login = unixepoch() WHERE id = ?").run(user!.id);
+  db.prepare("UPDATE users SET last_login = unixepoch() WHERE id = ?").run(
+    user!.id,
+  );
 
   const token = signToken(String(user!.id), user!.role);
-  setCookie(c, "token", token, {
-    httpOnly: true,
-    path: "/",
-    maxAge: 60 * 60 * 8, // 8h
-    sameSite: "Lax",
-  });
+  setCookie(c, "token", token, authCookieOptions());
 
   return c.redirect("/admin");
 });
@@ -70,7 +83,7 @@ admin.get("/", authGuard, (c) => {
   const db = getDatabase();
   const pages = db
     .prepare(
-      "SELECT id, slug, title, draft, created_at, updated_at FROM pages ORDER BY updated_at DESC"
+      "SELECT id, slug, title, draft, created_at, updated_at FROM pages ORDER BY updated_at DESC",
     )
     .all() as {
     id: number;
@@ -101,8 +114,12 @@ admin.post("/pages", authGuard, async (c) => {
 
   if (!title) {
     return c.html(
-      pageEditView({ mode: "create", error: "Title is required.", data: { title, description, tags, body: pageBody } }),
-      400
+      pageEditView({
+        mode: "create",
+        error: "Title is required.",
+        data: { title, description, tags, body: pageBody },
+      }),
+      400,
     );
   }
 
@@ -118,7 +135,7 @@ admin.post("/pages", authGuard, async (c) => {
         error: `Slug "${slug}" already exists. Choose a different title or slug.`,
         data: { title, slug, description, tags, body: pageBody },
       }),
-      409
+      409,
     );
   }
 
@@ -127,24 +144,34 @@ admin.post("/pages", authGuard, async (c) => {
     tags
       .split(",")
       .map((t) => t.trim())
-      .filter(Boolean)
+      .filter(Boolean),
   );
 
   // Build frontmatter + file
-  const fileContent = buildMarkdown({ title, description, tags: tagsJson, draft, body: pageBody });
+  const fileContent = buildMarkdown({
+    title,
+    description,
+    tags: tagsJson,
+    draft,
+    body: pageBody,
+  });
   const filePath = join(config.contentDir, `${slug}.md`);
   writeFileSync(filePath, fileContent, "utf-8");
 
   try {
     db.prepare(
-      "INSERT INTO pages (slug, title, description, tags, draft) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO pages (slug, title, description, tags, draft) VALUES (?, ?, ?, ?, ?)",
     ).run(slug, title, description || null, tagsJson, draft);
   } catch (err) {
     // Rollback file
     if (existsSync(filePath)) unlinkSync(filePath);
     return c.html(
-      pageEditView({ mode: "create", error: "Database error — page not saved.", data: { title, slug, description, tags, body: pageBody } }),
-      500
+      pageEditView({
+        mode: "create",
+        error: "Database error — page not saved.",
+        data: { title, slug, description, tags, body: pageBody },
+      }),
+      500,
     );
   }
 
@@ -157,8 +184,18 @@ admin.get("/pages/:slug/edit", authGuard, (c) => {
   const slug = c.req.param("slug");
   const db = getDatabase();
   const row = db
-    .prepare("SELECT slug, title, description, tags, draft FROM pages WHERE slug = ?")
-    .get(slug) as { slug: string; title: string; description: string | null; tags: string | null; draft: number } | undefined;
+    .prepare(
+      "SELECT slug, title, description, tags, draft FROM pages WHERE slug = ?",
+    )
+    .get(slug) as
+    | {
+        slug: string;
+        title: string;
+        description: string | null;
+        tags: string | null;
+        draft: number;
+      }
+    | undefined;
 
   if (!row) return c.html(`<h1>404 — Page not found</h1>`, 404);
 
@@ -192,7 +229,7 @@ admin.get("/pages/:slug/edit", authGuard, (c) => {
         body: pageBody,
         draft: row.draft,
       },
-    })
+    }),
   );
 });
 
@@ -211,8 +248,12 @@ admin.post("/pages/:slug", authGuard, async (c) => {
 
   if (!title) {
     return c.html(
-      pageEditView({ mode: "edit", error: "Title is required.", data: { slug, title, description, tags, body: pageBody } }),
-      400
+      pageEditView({
+        mode: "edit",
+        error: "Title is required.",
+        data: { slug, title, description, tags, body: pageBody },
+      }),
+      400,
     );
   }
 
@@ -220,14 +261,20 @@ admin.post("/pages/:slug", authGuard, async (c) => {
     tags
       .split(",")
       .map((t) => t.trim())
-      .filter(Boolean)
+      .filter(Boolean),
   );
 
   db.prepare(
-    "UPDATE pages SET title = ?, description = ?, tags = ?, draft = ?, updated_at = unixepoch() WHERE slug = ?"
+    "UPDATE pages SET title = ?, description = ?, tags = ?, draft = ?, updated_at = unixepoch() WHERE slug = ?",
   ).run(title, description || null, tagsJson, draft, slug);
 
-  const fileContent = buildMarkdown({ title, description, tags: tagsJson, draft, body: pageBody });
+  const fileContent = buildMarkdown({
+    title,
+    description,
+    tags: tagsJson,
+    draft,
+    body: pageBody,
+  });
   writeFileSync(join(config.contentDir, `${slug}.md`), fileContent, "utf-8");
 
   return c.redirect("/admin");
@@ -239,7 +286,9 @@ admin.post("/pages/:slug/publish", authGuard, (c) => {
   const slug = c.req.param("slug") ?? "";
   const db = getDatabase();
   const result = db
-    .prepare("UPDATE pages SET draft = 0, updated_at = unixepoch() WHERE slug = ?")
+    .prepare(
+      "UPDATE pages SET draft = 0, updated_at = unixepoch() WHERE slug = ?",
+    )
     .run(slug);
 
   if (result.changes === 0) return c.html(`<h1>404 — Page not found</h1>`, 404);
@@ -253,7 +302,9 @@ admin.post("/pages/:slug/unpublish", authGuard, (c) => {
   const slug = c.req.param("slug") ?? "";
   const db = getDatabase();
   const result = db
-    .prepare("UPDATE pages SET draft = 1, updated_at = unixepoch() WHERE slug = ?")
+    .prepare(
+      "UPDATE pages SET draft = 1, updated_at = unixepoch() WHERE slug = ?",
+    )
     .run(slug);
 
   if (result.changes === 0) return c.html(`<h1>404 — Page not found</h1>`, 404);
@@ -269,13 +320,14 @@ admin.post("/pages/:slug/delete", authGuard, (c) => {
 
   // Soft delete — set draft=1 (invisible in public API)
   const result = db
-    .prepare("UPDATE pages SET draft = 1, updated_at = unixepoch() WHERE slug = ?")
+    .prepare(
+      "UPDATE pages SET draft = 1, updated_at = unixepoch() WHERE slug = ?",
+    )
     .run(slug);
 
   if (result.changes === 0) return c.html(`<h1>404 — Page not found</h1>`, 404);
   return c.redirect("/admin");
 });
-
 
 // ── Media ─────────────────────────────────────────────────────────────────────
 
@@ -283,8 +335,17 @@ admin.get("/media", authGuard, (c) => {
   const db = getDatabase();
   const driver = new LocalDriver(config.uploadDir);
   const rows = db
-    .prepare("SELECT id, filename, mime_type, size_bytes, alt_text, uploaded_at FROM media ORDER BY uploaded_at DESC")
-    .all() as Array<{ id: number; filename: string; mime_type: string; size_bytes: number; alt_text: string | null; uploaded_at: number }>;
+    .prepare(
+      "SELECT id, filename, mime_type, size_bytes, alt_text, uploaded_at FROM media ORDER BY uploaded_at DESC",
+    )
+    .all() as Array<{
+    id: number;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    alt_text: string | null;
+    uploaded_at: number;
+  }>;
   const items = rows.map((r) => ({ ...r, url: driver.url(r.filename) }));
   return c.html(mediaListView(items, c.req.query("flash")));
 });
@@ -296,7 +357,8 @@ admin.get("/media/upload", authGuard, (c) => {
 admin.post("/media/upload", authGuard, async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
-  const altText = typeof body["alt_text"] === "string" ? body["alt_text"] : null;
+  const altText =
+    typeof body["alt_text"] === "string" ? body["alt_text"] : null;
 
   if (!(file instanceof File)) {
     return c.html(mediaUploadView("Missing file"), 400);
@@ -313,8 +375,9 @@ admin.post("/media/upload", authGuard, async (c) => {
   const stored = await driver.write(file.name, data, file.type);
 
   const db = getDatabase();
-  db.prepare("INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?)")
-    .run(stored, file.type, file.size, altText);
+  db.prepare(
+    "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?)",
+  ).run(stored, file.type, file.size, altText);
 
   return c.redirect("/admin/media?flash=Uploaded+successfully");
 });
@@ -322,7 +385,8 @@ admin.post("/media/upload", authGuard, async (c) => {
 admin.post("/media/:id/delete", authGuard, async (c) => {
   const id = parseInt(c.req.param("id") ?? "", 10);
   const db = getDatabase();
-  const row = db.prepare("SELECT id, filename FROM media WHERE id = ?")
+  const row = db
+    .prepare("SELECT id, filename FROM media WHERE id = ?")
     .get(id) as { id: number; filename: string } | undefined;
   if (!row) return c.redirect("/admin/media?flash=Not+found");
 
@@ -362,7 +426,7 @@ function syncDraftFlag(slug: string, draft: number): void {
   const raw = readFileSync(filePath, "utf-8");
   const updated = raw.replace(
     /^draft:\s*(true|false)/m,
-    `draft: ${draft === 0 ? "false" : "true"}`
+    `draft: ${draft === 0 ? "false" : "true"}`,
   );
   writeFileSync(filePath, updated, "utf-8");
 }

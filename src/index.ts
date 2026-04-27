@@ -10,10 +10,14 @@ import { media } from "./api/media.js";
 import { LocalDriver } from "./lib/storage.js";
 import { apiAuthGuard } from "./admin/middleware.js";
 import { publicRouter } from "./public/router.js";
+import { securityHeaders } from "./lib/security-headers.js";
 
 const app = new Hono();
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
+// Security headers applied to every response (CSP, X-Frame-Options, etc.)
+app.use("*", securityHeaders);
+
 // Global JSON error handler — catches unhandled errors and returns consistent envelope
 app.onError((err, c) => {
   console.error("[error]", err);
@@ -33,7 +37,7 @@ app.route("/api/auth", authRouter);
 // POST /api/media/upload  → upload file (Bearer required)
 // GET  /api/media         → list media (Bearer required)
 // DELETE /api/media/:id   → delete media (Bearer required)
-app.use("/api/media", apiAuthGuard);
+// Auth guard is applied inside the router (media.use("/*", apiAuthGuard)).
 app.route("/api/media", media);
 
 // ── Serve uploaded files ──────────────────────────────────────────────────────
@@ -46,11 +50,17 @@ app.get("/media/:filename", async (c) => {
     // Derive content-type from extension — simple map, no dep needed
     const ext = filename.split(".").pop()?.toLowerCase() ?? "";
     const mime: Record<string, string> = {
-      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
-      gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
       pdf: "application/pdf",
     };
-    return c.body(new Uint8Array(data), 200, { "Content-Type": mime[ext] ?? "application/octet-stream" });
+    return c.body(new Uint8Array(data), 200, {
+      "Content-Type": mime[ext] ?? "application/octet-stream",
+    });
   } catch {
     return c.notFound();
   }
