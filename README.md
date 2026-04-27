@@ -29,7 +29,7 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 | 3     | Auth (JWT) + Admin UI (server-rendered)  | ✅ Done     |
 | 4     | Public site renderer + default theme     | ✅ Done     |
 | 5     | Media upload + storage abstraction       | ✅ Done     |
-| 6     | CLI (vlcms admin commands)               | Pending     |
+| 6     | CLI (vlcms admin commands)               | ✅ Done     |
 
 ---
 
@@ -170,7 +170,7 @@ GET /api/pages/:slug
 ### Auth
 
 ```bash
-# Login — returns httpOnly cookie + JSON { data: { ok: true } }
+# Login — returns httpOnly cookie + JSON { data: { token, userId, role } }
 POST /api/auth/login
 Content-Type: application/json
 { "email": "admin@example.com", "password": "secret" }
@@ -178,8 +178,9 @@ Content-Type: application/json
 # Logout — clears the token cookie
 POST /api/auth/logout
 
-# Whoami — reads cookie, returns current user
+# Whoami — accepts Bearer token or httpOnly cookie
 GET /api/auth/me
+Authorization: Bearer <token>   # (or cookie set automatically)
 ```
 
 ### Pages — write (JWT required — Bearer or cookie)
@@ -308,6 +309,7 @@ vlcms media upload photo.jpg --alt "A photo"
 vlcms media delete 5
 
 # Auth
+vlcms login                     # prompts for email + password, saves token to ~/.vlcms/config.json
 vlcms whoami
 
 # JSON output (for piping)

@@ -244,11 +244,13 @@ communicates exclusively via fetch. Config is injected via environment variables
 | Env var      | Default               | Purpose                              |
 |--------------|-----------------------|--------------------------------------|
 | `VLCMS_URL`  | `http://localhost:3000` | Base URL of the running CMS server |
-| `VLCMS_TOKEN`| (none)                | JWT from `POST /api/auth/login`      |
+| `VLCMS_TOKEN`| (none)                | JWT — overrides saved config. Cascade: env → ~/.vlcms/config.json → unauthenticated |
 
 ### Commands
 
 ```
+vlcms login                                                   # prompt credentials → save token to ~/.vlcms/config.json
+vlcms whoami                                                  # verify token, show userId + role
 vlcms pages list
 vlcms pages get <slug>
 vlcms pages create --title T [--file F] [--description D] [--publish]
@@ -257,7 +259,6 @@ vlcms pages delete <slug>
 vlcms media list
 vlcms media upload <file> [--alt T]
 vlcms media delete <id>
-vlcms whoami
 ```
 
 All commands accept `--json` for machine-readable output (piping to `jq`, etc.).
@@ -266,13 +267,14 @@ All commands accept `--json` for machine-readable output (piping to `jq`, etc.).
 
 ```
 src/cli/
-  index.ts            Entry point — dispatch by entity (pages/media/whoami)
-  client.ts           ApiClient — fetch wrapper, auth header, ApiError
-  format.ts           fmt.table / fmt.detail / fmt.success / fmt.error
+  index.ts            Entry point — dispatch by entity (pages/media/login/whoami)
+  client.ts           ApiClient — fetch wrapper, auth header, ApiError, saveToken/loadConfig
+  format.ts           fmt.table / fmt.detail / fmt.success / fmt.error / fmt.info
+  parse-flags.ts      shared --flag parser (single source of truth)
   commands/
     pages.ts          pages subcommands
     media.ts          media subcommands
-    auth.ts           whoami
+    auth.ts           login (prompt + persist) + whoami
 ```
 
 ### Running

@@ -189,6 +189,67 @@ Applying app.use("/api/media", apiAuthGuard) at the mount site only guards the e
 ### .. in filename not eliminated by slash-to-underscore substitution
 replace(/[\/\\]/g, "_") converts slashes but leaves .. intact -- ../evil.png becomes .._evil.png, still a traversal risk if the containment check is ever missed. Added replace(/\.{2,}/g, "_") to remove consecutive dots. Belt-and-suspenders: sanitize on write AND contain on read/delete.
 
+---
+
+## Phase 6 — CLI (`vlcms`) (2026-04-26)
+
+### Contract-first CLI typing — inspect the server before typing the client
+The CLI initially typed `client.get<PageListItem[]>()` assuming the server returned a bare array.
+The server actually returns `{ items: PageListItem[], pagination: { ... } }` inside the `{ data: ... }` envelope.
+One in-process call to the Hono app at the start of the phase would have revealed this in 30 seconds.
+**Rule**: before typing any CLI response, grep the server handler or run a curl against the real endpoint.
+
+---
+
+### Integration tests are discovery tools, not just validation
+The E2E test (`create → list → media upload → list → delete`) was added at the end of Phase 6, but
+if it had existed at T1, it would have immediately caught the `{ items, pagination }` inner shape bug.
+**Rule**: write one in-process integration test per phase at the START. It doubles as a spec and a bug trap.
+
+---
+
+### `status` column vs `draft: boolean` — never add a formatter field without a server grep
+Added a `status` column to the pages list formatter before confirming the server returned it.
+The server uses `draft: 0|1` (integer), not a `status: string` field.
+**Rule**: before adding a field to `fmt.table`, run `grep -n "status"` in the relevant server handler.
+
+---
+
+### Bearer + cookie dual-guard — the CLI needs Bearer, the Admin UI needs cookie
+`/api/auth/me` only read cookies initially — the CLI (which sends `Authorization: Bearer`) got 401.
+Fix: `apiAuthGuard` accepts both. The guard checks `Authorization: Bearer` first, falls back to cookie.
+This makes the same route usable from headless clients and browser-based UI without duplication.
+
+---
+
+### Token persistence — `~/.vlcms/config.json`
+`vlcms login` persists `{ baseUrl, token }` to `~/.vlcms/config.json`.
+Token cascade in `loadConfig()`: `VLCMS_TOKEN` env → `~/.vlcms/config.json` → unauthenticated.
+This mirrors the pattern used by `gh`, `kubectl`, and `fly` — env override always wins.
+
+---
+
+### `parseFlags` duplication — shared utility extracted
+`parseFlags` was copy-pasted identically in `pages.ts` and `media.ts`.
+Extracted to `src/cli/parse-flags.ts`. Any future command imports from there.
+**Rule**: if you paste code a second time, extract it before the third paste.
+
+---
+
+### `pagesUpdate` used `client.post` instead of `client.put`
+Bug: `pagesUpdate` called `POST /api/pages/:slug` — the server routes that to the write router's root,
+not the update handler. The CLI would silently succeed with a wrong status code.
+The unit test mocked `client.post` and missed it — mocks that bypass the HTTP layer can mask method bugs.
+**Rule**: integration tests (real server in-process) catch HTTP method mismatches; unit mocks don't.
+
+---
+
+### Hono app booted in-process for integration tests — no port, no spawn
+`app.request(url, opts)` sends a synthetic request directly to the Hono app without binding a port.
+This is the cleanest pattern for integration tests: real routing, real middleware, real DB, no OS socket.
+All test mocks target `config` and `getDatabase` — the HTTP layer is exercised end-to-end.
+
+
 ## Phase 6 — CLI
 
 - **CLI = HTTP client, not module importer**: The CLI talks to the server via fetch exclusively. It never imports server or DB code. This keeps the binary portable (point at any URL) and prevents the CLI from becoming a hidden second entry point to the storage layer.
