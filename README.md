@@ -8,28 +8,44 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 
 ## Stack
 
-| Layer      | Technology              |
-|------------|-------------------------|
-| HTTP       | Hono + @hono/node-server |
-| Database   | SQLite (better-sqlite3) |
-| Content    | Markdown + YAML frontmatter (gray-matter + marked) |
-| Templates  | Server-rendered HTML strings (no client JS) |
-| Auth       | JWT + httpOnly cookie (Phase 3) |
-| Runtime    | Node.js 20+ ESM, TypeScript |
+| Layer     | Technology                                         |
+| --------- | -------------------------------------------------- |
+| HTTP      | Hono + @hono/node-server                           |
+| Database  | SQLite (better-sqlite3)                            |
+| Content   | Markdown + YAML frontmatter (gray-matter + marked) |
+| Templates | Server-rendered HTML strings (no client JS)        |
+| Auth      | JWT + httpOnly cookie (Phase 3)                    |
+| Runtime   | Node.js 20+ ESM, TypeScript                        |
 
 ---
 
 ## Project Status
 
-| Phase | Scope                                    | Status      |
-|-------|------------------------------------------|-------------|
-| 0     | Repo init, architecture, base scaffolding | ✅ Done     |
-| 1     | Content engine (parser + renderer + DB)  | ✅ Done     |
-| 2     | REST API (read + write, no auth yet)     | ✅ Done     |
-| 3     | Auth (JWT) + Admin UI (server-rendered)  | ✅ Done     |
-| 4     | Public site renderer + default theme     | ✅ Done     |
-| 5     | Media upload + storage abstraction       | ✅ Done     |
-| 6     | CLI (vlcms admin commands)               | ✅ Done     |
+| Phase | Scope                                     | Status  |
+| ----- | ----------------------------------------- | ------- |
+| 0     | Repo init, architecture, base scaffolding | ✅ Done |
+| 1     | Content engine (parser + renderer + DB)   | ✅ Done |
+| 2     | REST API (read + write, no auth yet)      | ✅ Done |
+| 3     | Auth (JWT) + Admin UI (server-rendered)   | ✅ Done |
+| 4     | Public site renderer + default theme      | ✅ Done |
+| 5     | Media upload + storage abstraction        | ✅ Done |
+| 6     | CLI (vlcms admin commands)                | ✅ Done |
+| H     | Hardening pass (security + reliability)   | ✅ Done |
+
+---
+
+## Security Posture
+
+The hardening pass adds a layered defense:
+
+- **Cookies**: `httpOnly` + `SameSite=Strict` + `Secure` by default. Set `COOKIE_SECURE=false` only for local HTTP dev.
+- **CSRF**: SameSite=Strict mitigates CSRF for modern browsers; admin form-actions are restricted by CSP `form-action 'self'`.
+- **CSP + headers**: every response carries `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=()…`.
+- **Rate limiting**: 5 _failed_ login attempts per 15-minute window per IP on both `/api/auth/login` and `/admin/login`. Successful logins are uncounted. Returns 429 with `Retry-After`.
+- **MIME spoof defense**: server-side magic-byte check on uploads. SVG is blocked entirely (XSS risk via inline `<script>`).
+- **Path traversal**: 3-layer defense in the content resolver and storage driver; both `read()` and `delete()` paths reject any resolved path that escapes the content/upload root.
+- **Audit log**: every authentication attempt is recorded in `auth_log` (timestamp, IP, email, success, reason).
+- **Reverse proxy**: set `TRUST_PROXY=true` ONLY when running behind Caddy/nginx that strip & set `X-Forwarded-For`. Default is OFF (XFF ignored) so attackers can't spoof per-request IPs to bypass the rate limiter.
 
 ---
 
@@ -127,9 +143,19 @@ CONTENT_DIR=./content/pages
 UPLOAD_DIR=./uploads          # where media files are stored
 SITE_TITLE=My Site            # public homepage title
 JWT_SECRET=change_this_in_production
+JWT_EXPIRES_IN=8h             # JWT lifetime
+COOKIE_SECURE=true            # default true; set false ONLY for local HTTP dev
+TRUST_PROXY=false             # set true when running behind Caddy/nginx
+ADMIN_EMAIL=admin@example.com # used by seed:admin only
 ```
 
 See `env.example` for the full reference.
+
+**Security-relevant defaults**:
+
+- `COOKIE_SECURE` defaults to `true` — auth cookie is only sent over HTTPS. Override with `COOKIE_SECURE=false` for local HTTP dev.
+- `TRUST_PROXY` defaults to `false` — the server ignores `X-Forwarded-For`. Set `TRUST_PROXY=true` ONLY when an upstream proxy (Caddy, nginx) strips/sets the header. Otherwise attackers can rotate XFF per request to bypass rate-limiting.
+- `JWT_SECRET` is required — the server fails to boot without it (no silent default).
 
 ---
 
@@ -317,7 +343,7 @@ vlcms pages list --json | jq '.[].slug'
 ```
 
 **Run without installing:**
+
 ```bash
 VLCMS_TOKEN=<jwt> npx tsx src/cli/index.ts pages list
 ```
-

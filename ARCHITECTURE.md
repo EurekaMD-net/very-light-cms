@@ -16,6 +16,7 @@ Very Light CMS is NOT a framework. It is a **content engine** with a deliberate 
 - Never do anything the user didn't ask for
 
 **Non-goals** (explicitly out of scope):
+
 - Plugin ecosystems
 - Multi-tenancy
 - Real-time collaboration
@@ -26,16 +27,16 @@ Very Light CMS is NOT a framework. It is a **content engine** with a deliberate 
 
 ## Stack
 
-| Layer       | Technology                  | Reason                                     |
-|-------------|-----------------------------|--------------------------------------------|
-| Runtime     | Node.js (ESM, TypeScript)   | Ecosystem, typing, familiar                |
-| HTTP        | Hono                        | Lightweight, fast, edge-compatible         |
-| Database    | SQLite (better-sqlite3)     | Zero-infra, file-portable, fast reads      |
-| Templates   | Eta (or plain HTML strings) | Minimal, no build step, server-side only   |
-| Auth        | JWT (jsonwebtoken)          | Stateless, simple, no session store needed |
-| Storage     | Local filesystem (+ S3 opt) | Start simple, swap without refactor        |
-| Content     | Markdown + YAML frontmatter | Human-readable, git-friendly               |
-| Build/Dev   | tsx (dev), tsc (prod)       | Consistent with agent-controller pattern   |
+| Layer     | Technology                  | Reason                                     |
+| --------- | --------------------------- | ------------------------------------------ |
+| Runtime   | Node.js (ESM, TypeScript)   | Ecosystem, typing, familiar                |
+| HTTP      | Hono                        | Lightweight, fast, edge-compatible         |
+| Database  | SQLite (better-sqlite3)     | Zero-infra, file-portable, fast reads      |
+| Templates | Eta (or plain HTML strings) | Minimal, no build step, server-side only   |
+| Auth      | JWT (jsonwebtoken)          | Stateless, simple, no session store needed |
+| Storage   | Local filesystem (+ S3 opt) | Start simple, swap without refactor        |
+| Content   | Markdown + YAML frontmatter | Human-readable, git-friendly               |
+| Build/Dev | tsx (dev), tsc (prod)       | Consistent with agent-controller pattern   |
 
 ---
 
@@ -179,19 +180,19 @@ REST API  Admin UI  Public Site
 
 ## API Contracts (v1)
 
-| Method | Path                    | Auth    | Description               |
-|--------|-------------------------|---------|---------------------------|
-| GET    | /api/pages              | Bearer  | List all pages            |
-| GET    | /api/pages/:slug        | Bearer  | Get single page           |
-| POST   | /api/pages              | Bearer  | Create page               |
-| PUT    | /api/pages/:slug        | Bearer  | Update page               |
-| DELETE | /api/pages/:slug        | Bearer  | Delete (soft) page        |
-| POST   | /api/media/upload       | Bearer  | Upload media file (10MB max, rasters + PDF only) |
-| GET    | /api/media              | Bearer  | List uploaded media       |
-| DELETE | /api/media/:id          | Bearer  | Delete media by ID        |
-| GET    | /media/:filename        | Public  | Serve uploaded file       |
-| POST   | /api/auth/login         | Public  | Login → JWT               |
-| GET    | /api/auth/me            | Cookie/Bearer | Current authenticated user |
+| Method | Path              | Auth          | Description                                      |
+| ------ | ----------------- | ------------- | ------------------------------------------------ |
+| GET    | /api/pages        | Bearer        | List all pages                                   |
+| GET    | /api/pages/:slug  | Bearer        | Get single page                                  |
+| POST   | /api/pages        | Bearer        | Create page                                      |
+| PUT    | /api/pages/:slug  | Bearer        | Update page                                      |
+| DELETE | /api/pages/:slug  | Bearer        | Delete (soft) page                               |
+| POST   | /api/media/upload | Bearer        | Upload media file (10MB max, rasters + PDF only) |
+| GET    | /api/media        | Bearer        | List uploaded media                              |
+| DELETE | /api/media/:id    | Bearer        | Delete media by ID                               |
+| GET    | /media/:filename  | Public        | Serve uploaded file                              |
+| POST   | /api/auth/login   | Public        | Login → JWT                                      |
+| GET    | /api/auth/me      | Cookie/Bearer | Current authenticated user                       |
 
 ---
 
@@ -235,16 +236,15 @@ SITE_TITLE=My Site            # HTML <title> and <h1> on the homepage
 
 ---
 
-
 ## CLI (vlcms)
 
 The `vlcms` binary is a thin HTTP client over the REST API. It does NOT import server code — it
 communicates exclusively via fetch. Config is injected via environment variables:
 
-| Env var      | Default               | Purpose                              |
-|--------------|-----------------------|--------------------------------------|
-| `VLCMS_URL`  | `http://localhost:3000` | Base URL of the running CMS server |
-| `VLCMS_TOKEN`| (none)                | JWT — overrides saved config. Cascade: env → ~/.vlcms/config.json → unauthenticated |
+| Env var       | Default                 | Purpose                                                                             |
+| ------------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| `VLCMS_URL`   | `http://localhost:3000` | Base URL of the running CMS server                                                  |
+| `VLCMS_TOKEN` | (none)                  | JWT — overrides saved config. Cascade: env → ~/.vlcms/config.json → unauthenticated |
 
 ### Commands
 
@@ -305,20 +305,74 @@ If you add a public-facing submission flow (comments, user-generated content), y
 
 Rasterized formats (JPEG, PNG, GIF, WebP) and PDF are accepted. If SVG support is needed in the future, serve SVG from a separate cookieless origin or run it through a sanitizer (e.g. `svgo` + strip `<script>` / `on*` attributes) before storage.
 
+### MIME spoofing — magic-byte validation
+
+The multipart `Content-Type` header is client-supplied and trivially spoofable. After the allowlist check, every uploaded file's leading bytes are validated against the declared MIME (`src/lib/mime-sniff.ts`):
+
+| Type | Signature                                 |
+| ---- | ----------------------------------------- |
+| PNG  | `89 50 4E 47 0D 0A 1A 0A`                 |
+| JPEG | `FF D8 FF` followed by a marker `>= 0xC0` |
+| GIF  | `GIF87a` or `GIF89a`                      |
+| WebP | `RIFF....WEBP`                            |
+| PDF  | `%PDF`                                    |
+
+Mismatch returns 400 before any disk write or DB insert.
+
+### Rate limiting + auth audit log
+
+Both `POST /api/auth/login` and `POST /admin/login` are wrapped in a sliding-window limiter (5 _failed_ attempts / 15 min / IP). Successful logins are uncounted via `skipOn`. Every attempt — pass, fail, validation error, rate-limited — is recorded in the `auth_log` table with timestamp, IP, email, success flag, and reason.
+
+Client IP is read from the raw socket address by default. `X-Forwarded-For` is honored only when `TRUST_PROXY=true` is set; otherwise it's ignored to prevent attackers from rotating the header per request.
+
+### Cookie hardening
+
+Auth cookie (`token`) attributes:
+
+- `HttpOnly` — not exposed to JS (XSS-driven theft mitigated)
+- `SameSite=Strict` — never sent on cross-site requests, including top-level navigation. Strongest CSRF mitigation without per-request tokens.
+- `Secure` — defaults ON. `COOKIE_SECURE=false` is the only opt-out and exists for local HTTP dev. Explicit override is required because a silent prod-only default has bitten projects when `NODE_ENV` drifts.
+
+### CSP + transport headers
+
+Every response carries:
+
+```
+Content-Security-Policy:
+  default-src 'self';
+  img-src 'self' data:;
+  style-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline';
+  object-src 'none'; base-uri 'self';
+  frame-ancestors 'none'; form-action 'self'
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+Cache-Control: no-store        (auth endpoints only)
+```
+
+`'unsafe-inline'` for scripts is currently required by two `onsubmit` confirm handlers in admin views; tightening to a hashed-script policy is a future improvement.
+
+### Health endpoint
+
+`GET /health` runs `SELECT 1` against the live DB. Returns 503 with `status: "degraded"` and `db: "unavailable"` when the DB is unreachable — useful for orchestrator probes that need to distinguish "process up" from "service healthy."
+
 ---
 
 ## Phase Plan
 
-| Phase | Scope                                              | Status   |
-|-------|----------------------------------------------------|-----------| 
-| 0     | Repo init, ARCHITECTURE.md, base scaffolding       | ✅ Done  |
-| 1     | Content engine (parser + renderer), SQLite schema  | ✅ Done  |
-| 2     | REST API (pages read + write, no auth yet)         | ✅ Done  |
-| 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)   | ✅ Done  |
-| 4     | Public site renderer + default theme               | ✅ Done  |
-| 5     | Media upload + storage abstraction                 | ✅ Done  |
-| 6     | CLI (vlcms admin commands)                         | ✅ Done  |
+| Phase | Scope                                               | Status  |
+| ----- | --------------------------------------------------- | ------- |
+| 0     | Repo init, ARCHITECTURE.md, base scaffolding        | ✅ Done |
+| 1     | Content engine (parser + renderer), SQLite schema   | ✅ Done |
+| 2     | REST API (pages read + write, no auth yet)          | ✅ Done |
+| 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)    | ✅ Done |
+| 4     | Public site renderer + default theme                | ✅ Done |
+| 5     | Media upload + storage abstraction                  | ✅ Done |
+| 6     | CLI (vlcms admin commands)                          | ✅ Done |
+| H     | Hardening pass (security headers, rate limit, etc.) | ✅ Done |
 
 ---
 
-*Last updated: 2026-04-26 — Phase 5 complete*
+_Last updated: 2026-04-27 — Hardening pass complete_
