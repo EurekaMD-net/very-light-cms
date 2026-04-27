@@ -67,9 +67,10 @@ publicRouter.get("/:slug", (c) => {
   }
 
   // ETag — conditional GET
+  // RFC 7232 §4.1: server SHOULD echo ETag on 304 responses.
   const etag = `"${row.updated_at}"`;
   if (c.req.header("if-none-match") === etag) {
-    return c.body(null, 304);
+    return c.body(null, 304, { ETag: etag });
   }
 
   // Read + render markdown
