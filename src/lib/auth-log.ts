@@ -1,19 +1,12 @@
 import type { Context } from "hono";
 import { getDatabase } from "../db/database.js";
+import { clientIp } from "./client-ip.js";
 
 export type AuthLogReason =
   | "ok"
   | "invalid_credentials"
   | "rate_limited"
   | "validation";
-
-/** Best-effort client-IP extraction. Mirrors the rate-limit keyFn. */
-function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } };
-  return env?.incoming?.socket?.remoteAddress ?? "unknown";
-}
 
 /**
  * Insert one row into auth_log. Best-effort: any DB error is swallowed and

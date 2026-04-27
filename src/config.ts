@@ -28,11 +28,23 @@ export const config = {
     const p = optional("UPLOAD_DIR", "./uploads");
     return resolve(p);
   },
+  /**
+   * Default ON — auth cookie always carries Secure. Set COOKIE_SECURE=false
+   * ONLY in local dev over plain HTTP. Inverts the prior NODE_ENV-derived
+   * default (which silently downgraded if NODE_ENV was unset).
+   */
   get cookieSecure(): boolean {
-    const flag = process.env["COOKIE_SECURE"];
-    if (flag === "true") return true;
-    if (flag === "false") return false;
-    return process.env["NODE_ENV"] === "production";
+    return process.env["COOKIE_SECURE"] !== "false";
+  },
+  /**
+   * Trust X-Forwarded-For for client-IP attribution (rate-limit + auth_log).
+   * Default OFF — trusting XFF without an upstream proxy that strips/sets it
+   * lets attackers spoof per-request IPs and bypass the rate limiter. Set
+   * TRUST_PROXY=true ONLY when the CMS runs behind Caddy / nginx / similar
+   * that overwrites the XFF header with the real connecting IP.
+   */
+  get trustProxy(): boolean {
+    return process.env["TRUST_PROXY"] === "true";
   },
   adminEmail: optional("ADMIN_EMAIL", "admin@example.com"),
 };

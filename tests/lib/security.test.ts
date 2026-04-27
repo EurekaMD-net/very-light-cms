@@ -23,6 +23,38 @@ afterEach(() => {
   }
 });
 
+describe("config.trustProxy + clientIp anti-spoof", () => {
+  it("ignores X-Forwarded-For by default (TRUST_PROXY unset)", async () => {
+    delete process.env.TRUST_PROXY;
+    const { Hono } = await import("hono");
+    const { clientIp } = await import("../../src/lib/client-ip.js");
+
+    const app = new Hono();
+    app.get("/ip", (c) => c.text(clientIp(c)));
+    const res = await app.request("/ip", {
+      headers: { "x-forwarded-for": "1.2.3.4" },
+    });
+    const ip = await res.text();
+    expect(ip).not.toBe("1.2.3.4");
+    expect(ip).toBe("unknown"); // no socket in test adapter
+  });
+
+  it("honors X-Forwarded-For when TRUST_PROXY=true", async () => {
+    process.env.TRUST_PROXY = "true";
+    const { Hono } = await import("hono");
+    const { clientIp } = await import("../../src/lib/client-ip.js");
+
+    const app = new Hono();
+    app.get("/ip", (c) => c.text(clientIp(c)));
+    const res = await app.request("/ip", {
+      headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.1" },
+    });
+    const ip = await res.text();
+    expect(ip).toBe("1.2.3.4");
+    delete process.env.TRUST_PROXY;
+  });
+});
+
 describe("authCookieOptions", () => {
   beforeEach(() => {
     delete process.env.COOKIE_SECURE;
@@ -36,9 +68,9 @@ describe("authCookieOptions", () => {
     expect(o.maxAge).toBe(60 * 60 * 8);
   });
 
-  it("Secure=false in development", () => {
-    process.env.NODE_ENV = "development";
-    expect(authCookieOptions().secure).toBe(false);
+  it("Secure=true by default (no env override)", () => {
+    delete process.env.NODE_ENV;
+    expect(authCookieOptions().secure).toBe(true);
   });
 
   it("Secure=true in production", () => {
@@ -46,13 +78,12 @@ describe("authCookieOptions", () => {
     expect(authCookieOptions().secure).toBe(true);
   });
 
-  it("COOKIE_SECURE=true forces on regardless of NODE_ENV", () => {
+  it("Secure=true even in development (was a footgun before — must opt out explicitly)", () => {
     process.env.NODE_ENV = "development";
-    process.env.COOKIE_SECURE = "true";
     expect(authCookieOptions().secure).toBe(true);
   });
 
-  it("COOKIE_SECURE=false forces off regardless of NODE_ENV", () => {
+  it("COOKIE_SECURE=false forces off (only escape hatch for local HTTP dev)", () => {
     process.env.NODE_ENV = "production";
     process.env.COOKIE_SECURE = "false";
     expect(authCookieOptions().secure).toBe(false);

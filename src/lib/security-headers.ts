@@ -38,3 +38,13 @@ export async function securityHeaders(c: Context, next: Next): Promise<void> {
     c.res.headers.set(key, val);
   }
 }
+
+/**
+ * Sets Cache-Control: no-store on auth-related responses so that
+ * intermediaries (browsers, proxies) don't cache login responses, the
+ * Set-Cookie payload, or /me identity responses.
+ */
+export async function noStore(c: Context, next: Next): Promise<void> {
+  await next();
+  c.res.headers.set("Cache-Control", "no-store");
+}

@@ -8,6 +8,9 @@ import { Hono } from "hono";
 process.env.JWT_SECRET = "auth-log-test-secret";
 process.env.DB_PATH = ":memory:";
 process.env.CONTENT_DIR = "/tmp/vlcms-auth-log-test";
+// XFF parsing is gated on TRUST_PROXY in the audited build. Tests rely on
+// XFF for synthetic IP attribution, so opt in.
+process.env.TRUST_PROXY = "true";
 
 import { authRouter } from "../../src/api/auth.js";
 import { getDatabase, closeDatabase } from "../../src/db/database.js";

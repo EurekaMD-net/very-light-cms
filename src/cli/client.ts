@@ -100,19 +100,22 @@ export class ApiClient {
   }
 
   /**
-   * Fetch with one transparent retry on transient network errors
-   * (ECONNREFUSED, ETIMEDOUT, ENOTFOUND, ECONNRESET). HTTP status errors
-   * are NOT retried — those are real server responses, not transient.
+   * Fetch with one transparent retry on transient network errors. HTTP error
+   * statuses are NOT retried — those are real responses. Retry is only
+   * enabled for safe methods (idempotent: GET, HEAD) — retrying POST/PUT/DELETE
+   * on ECONNRESET could double-apply when the server received the request
+   * but the response was lost.
    * Backoff: 250ms before the single retry.
    */
   private async fetchWithRetry(
     url: string,
     init: RequestInit,
+    retryable: boolean,
   ): Promise<Response> {
     try {
       return await fetch(url, init);
     } catch (err) {
-      if (isTransientNetworkError(err)) {
+      if (retryable && isTransientNetworkError(err)) {
         await new Promise((r) => setTimeout(r, 250));
         return await fetch(url, init);
       }
@@ -121,18 +124,24 @@ export class ApiClient {
   }
 
   async get<T>(path: string): Promise<T> {
-    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-      headers: this.headers(),
-    });
+    const res = await this.fetchWithRetry(
+      `${this.baseUrl}${path}`,
+      { headers: this.headers() },
+      true, // GET is idempotent — safe to retry
+    );
     return this.unwrap<T>(res);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
+    const res = await this.fetchWithRetry(
+      `${this.baseUrl}${path}`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+      },
+      false, // POST may have side effects — don't retry
+    );
     return this.unwrap<T>(res);
   }
 
@@ -140,28 +149,33 @@ export class ApiClient {
     // No Content-Type header — fetch sets multipart/form-data with boundary automatically
     const h: Record<string, string> = {};
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
-    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: h,
-      body: form,
-    });
+    const res = await this.fetchWithRetry(
+      `${this.baseUrl}${path}`,
+      { method: "POST", headers: h, body: form },
+      false,
+    );
     return this.unwrap<T>(res);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-      method: "PUT",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-    });
+    const res = await this.fetchWithRetry(
+      `${this.baseUrl}${path}`,
+      {
+        method: "PUT",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+      },
+      false,
+    );
     return this.unwrap<T>(res);
   }
 
   async delete<T>(path: string): Promise<T> {
-    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
-      method: "DELETE",
-      headers: this.headers(),
-    });
+    const res = await this.fetchWithRetry(
+      `${this.baseUrl}${path}`,
+      { method: "DELETE", headers: this.headers() },
+      false,
+    );
     return this.unwrap<T>(res);
   }
 
@@ -197,16 +211,22 @@ export class ApiClient {
  *   ETIMEDOUT    — TCP timeout
  *   ENOTFOUND    — DNS hiccup
  *   ECONNRESET   — peer closed mid-request
+ *   EAI_AGAIN    — DNS server temporarily unavailable
+ *   ENETUNREACH  — network blip (common on VPS / mobile)
  */
+const TRANSIENT_CODES = new Set([
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "ECONNRESET",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+]);
+
 export function isTransientNetworkError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { code?: string; cause?: { code?: string } };
   const code = e.cause?.code ?? e.code;
   if (!code) return false;
-  return (
-    code === "ECONNREFUSED" ||
-    code === "ETIMEDOUT" ||
-    code === "ENOTFOUND" ||
-    code === "ECONNRESET"
-  );
+  return TRANSIENT_CODES.has(code);
 }

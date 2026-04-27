@@ -8,8 +8,12 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 // --json mode is determined at module load time via process.argv.
 // We test the non-JSON path by default (argv doesn't include --json in test runs).
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  // jsonMode override is module-level state — always reset so a test that
+  // forgets to clear it can't bleed into the next test or test file.
+  const fmt = await import("../../src/cli/format.js");
+  fmt.setJsonModeForTests(null);
 });
 
 describe("fmt.table", () => {

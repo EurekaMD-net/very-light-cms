@@ -3,14 +3,19 @@
  * Sliding-window rate limiter contract tests.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import {
   rateLimit,
   __resetRateLimitForTests,
 } from "../../src/lib/rate-limit.js";
 
+const ORIGINAL_TRUST_PROXY = process.env.TRUST_PROXY;
 beforeEach(() => __resetRateLimitForTests());
+afterEach(() => {
+  if (ORIGINAL_TRUST_PROXY === undefined) delete process.env.TRUST_PROXY;
+  else process.env.TRUST_PROXY = ORIGINAL_TRUST_PROXY;
+});
 
 function buildApp(maxAttempts: number, windowMs: number) {
   const app = new Hono();
@@ -79,7 +84,27 @@ describe("rateLimit middleware", () => {
     expect(b.status).toBe(200);
   });
 
-  it("uses x-forwarded-for when set (left-most IP wins)", async () => {
+  it("ignores x-forwarded-for when TRUST_PROXY is unset (anti-spoof default)", async () => {
+    delete process.env.TRUST_PROXY;
+    const app = new Hono();
+    app.use("/x", rateLimit({ max: 1, windowMs: 60_000 }));
+    app.get("/x", (c) => c.text("ok"));
+
+    // Two requests with different XFF chains MUST share the same bucket
+    // because XFF is ignored — they collapse onto the socket-IP fallback ("unknown").
+    const a = await app.request("/x", {
+      headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.1" },
+    });
+    expect(a.status).toBe(200);
+    const a2 = await app.request("/x", {
+      headers: { "x-forwarded-for": "203.0.113.99, 10.0.0.1" },
+    });
+    // Same bucket → 429 even with different XFF
+    expect(a2.status).toBe(429);
+  });
+
+  it("honors x-forwarded-for when TRUST_PROXY=true (left-most IP wins)", async () => {
+    process.env.TRUST_PROXY = "true";
     const app = new Hono();
     app.use("/x", rateLimit({ max: 1, windowMs: 60_000 }));
     app.get("/x", (c) => c.text("ok"));
@@ -119,6 +144,34 @@ describe("rateLimit middleware", () => {
     expect(res.headers.get("Retry-After")).toBeTruthy();
     const body = await res.text();
     expect(body).toContain("Try again in");
+  });
+
+  it("skipOn — successful attempts are uncounted (login limiter pattern)", async () => {
+    const app = new Hono();
+    app.use(
+      "/login",
+      rateLimit({
+        max: 2,
+        windowMs: 60_000,
+        keyFn: () => "fixed",
+        skipOn: (c) => c.res.status >= 200 && c.res.status < 300,
+      }),
+    );
+    let nextStatus = 200;
+    app.post("/login", (c) => c.text("x", nextStatus as 200));
+
+    // Three "successful" logins in a row should NOT trip the cap because
+    // skipOn pops the slot back off after each handler.
+    for (let i = 0; i < 3; i++) {
+      const r = await app.request("/login", { method: "POST" });
+      expect(r.status).toBe(200);
+    }
+
+    // Now flip to failing — first two add real entries, third should 429.
+    nextStatus = 401;
+    expect((await app.request("/login", { method: "POST" })).status).toBe(401);
+    expect((await app.request("/login", { method: "POST" })).status).toBe(401);
+    expect((await app.request("/login", { method: "POST" })).status).toBe(429);
   });
 
   it("aged-out attempts allow new requests through", async () => {

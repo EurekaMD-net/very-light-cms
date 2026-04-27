@@ -44,8 +44,16 @@ export function detectMimeMatches(
       );
 
     case "image/jpeg":
-      // FF D8 FF — JPEG SOI marker, third byte varies (E0/E1/E2/DB/EE…)
-      return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+      // FF D8 FF — JPEG SOI marker followed by an APP/COM marker. The fourth
+      // byte must be a valid marker (>= 0xC0) — otherwise it's a malformed
+      // file masquerading via the SOI prefix.
+      return (
+        head[0] === 0xff &&
+        head[1] === 0xd8 &&
+        head[2] === 0xff &&
+        head[3] !== undefined &&
+        head[3] >= 0xc0
+      );
 
     case "image/gif":
       // "GIF87a" or "GIF89a"

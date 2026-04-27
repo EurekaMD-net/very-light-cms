@@ -17,6 +17,7 @@ import { authCookieOptions } from "../lib/cookie.js";
 import { rateLimit } from "../lib/rate-limit.js";
 import { detectMimeMatches } from "../lib/mime-sniff.js";
 import { recordAuthAttempt } from "../lib/auth-log.js";
+import { noStore } from "../lib/security-headers.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -28,9 +29,15 @@ export const admin = new Hono();
  * 5 login attempts per 15 minutes per IP. On limit, re-render the login
  * form with a flash message instead of returning JSON (admin is HTML-only).
  */
+/**
+ * 5 FAILED login attempts per 15 minutes per IP. Successful logins (302
+ * redirect to /admin) are uncounted via skipOn — only invalid credentials,
+ * validation errors, and rate-limited responses count.
+ */
 const adminLoginRateLimit = rateLimit({
   max: 5,
   windowMs: 15 * 60 * 1000,
+  skipOn: (c) => c.res.status >= 200 && c.res.status < 400, // 200/302 = success
   onLimit: (c, retryAfterSec) => {
     recordAuthAttempt(c, {
       email: null,
@@ -47,6 +54,10 @@ const adminLoginRateLimit = rateLimit({
 });
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
+// Auth-touching routes (login form, login submit, logout) get no-store so
+// intermediate caches don't pin Set-Cookie / form responses.
+admin.use("/login", noStore);
+admin.use("/logout", noStore);
 
 admin.get("/login", (c) => {
   // Already logged in? Redirect to dashboard
@@ -422,9 +433,23 @@ admin.post("/media/upload", authGuard, async (c) => {
   const stored = await driver.write(file.name, data, file.type);
 
   const db = getDatabase();
-  db.prepare(
-    "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?)",
-  ).run(stored, file.type, file.size, altText);
+  try {
+    db.prepare(
+      "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?)",
+    ).run(stored, file.type, file.size, altText);
+  } catch (err) {
+    // Roll back the on-disk file so we don't leave it orphaned.
+    await driver.delete(stored).catch(() => {
+      /* swallow secondary failure */
+    });
+    return c.html(
+      mediaUploadView(
+        "Failed to record upload: " +
+          (err instanceof Error ? err.message : String(err)),
+      ),
+      500,
+    );
+  }
 
   return c.redirect("/admin/media?flash=Uploaded+successfully");
 });

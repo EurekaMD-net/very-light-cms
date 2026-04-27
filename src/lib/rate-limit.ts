@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import { fail } from "./response.js";
+import { clientIp } from "./client-ip.js";
 
 /**
  * In-memory sliding-window rate limiter.
@@ -26,6 +27,13 @@ interface RateLimitOptions {
    * Retry-After header is set before this is invoked.
    */
   onLimit?: (c: Context, retryAfterSec: number) => Response | Promise<Response>;
+  /**
+   * If supplied, called AFTER the handler runs. When it returns true the
+   * attempt is uncounted (popped back off the bucket). Use case: only count
+   * failed login attempts, not successful logins. The handler decides what
+   * "success" means (typically c.res.status < 400).
+   */
+  skipOn?: (c: Context) => boolean;
 }
 
 /** Per-key timestamp arrays. Cleared as entries age out. */
@@ -36,24 +44,33 @@ export function __resetRateLimitForTests(): void {
   buckets.clear();
 }
 
-function defaultKeyFn(c: Context): string {
-  // x-forwarded-for honoring (left-most IP) when behind a reverse proxy,
-  // falling back to Hono's connecting-IP. Hono's adapter shape for the
-  // raw socket is not in the public type surface, so we read it via an
-  // untyped traversal. The "unknown" fallback bucket is shared but rare.
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } };
-  return env?.incoming?.socket?.remoteAddress ?? "unknown";
+/**
+ * Periodic janitor: prunes keys whose attempt arrays are empty after aging out.
+ * Bounds memory growth from one-off attackers spoofing IPs (or any natural
+ * IP turnover). Runs at most once every PRUNE_INTERVAL_MS.
+ */
+const PRUNE_INTERVAL_MS = 60_000;
+let lastPruneAt = 0;
+function maybePrune(now: number, windowMs: number): void {
+  if (now - lastPruneAt < PRUNE_INTERVAL_MS) return;
+  lastPruneAt = now;
+  const cutoff = now - windowMs;
+  for (const [key, attempts] of buckets) {
+    const fresh = attempts.filter((t) => t > cutoff);
+    if (fresh.length === 0) buckets.delete(key);
+    else if (fresh.length !== attempts.length) buckets.set(key, fresh);
+  }
 }
 
 export function rateLimit(options: RateLimitOptions) {
-  const { max, windowMs, keyFn = defaultKeyFn, onLimit } = options;
+  const { max, windowMs, keyFn = clientIp, onLimit, skipOn } = options;
 
   return async function rateLimitMiddleware(c: Context, next: Next) {
     const key = keyFn(c);
     const now = Date.now();
     const cutoff = now - windowMs;
+
+    maybePrune(now, windowMs);
 
     const attempts = buckets.get(key) ?? [];
     // Drop attempts outside the window
@@ -70,9 +87,20 @@ export function rateLimit(options: RateLimitOptions) {
       return fail(c, "Too many attempts. Try again later.", 429);
     }
 
+    // Tentatively reserve a slot, then run the handler. If skipOn says this
+    // attempt should NOT count (e.g. successful login), pop it back off.
     fresh.push(now);
     buckets.set(key, fresh);
 
     await next();
+
+    if (skipOn && skipOn(c)) {
+      const arr = buckets.get(key);
+      if (arr) {
+        const idx = arr.lastIndexOf(now);
+        if (idx >= 0) arr.splice(idx, 1);
+        if (arr.length === 0) buckets.delete(key);
+      }
+    }
   };
 }

@@ -27,19 +27,39 @@ export function mediaListView(items: MediaViewRow[], flash?: string): string {
       : items
           .map((m) => {
             const preview = isImage(m.mime_type)
-              ? '<img src="' + escHtml(m.url) + '" alt="' + escHtml(m.alt_text ?? "") + '" style="max-height:48px;max-width:80px;object-fit:contain;">'
+              ? '<img src="' +
+                escHtml(m.url) +
+                '" alt="' +
+                escHtml(m.alt_text ?? "") +
+                '" style="max-height:48px;max-width:80px;object-fit:contain;">'
               : '<span style="font-size:1.5rem">[file]</span>';
             const deleteForm =
-              '<form method="POST" action="/admin/media/' + m.id + '/delete" style="display:inline"' +
+              '<form method="POST" action="/admin/media/' +
+              m.id +
+              '/delete" style="display:inline"' +
               ' onsubmit="return confirm(&quot;Delete " + escHtml(m.filename) + "?&quot;)">' +
               '<button type="submit" class="btn-danger">Delete</button></form>';
-            return "<tr>" +
-              "<td>" + preview + "</td>" +
-              '<td><a href="' + escHtml(m.url) + '" target="_blank">' + escHtml(m.filename) + "</a></td>" +
-              "<td>" + escHtml(m.mime_type) + "</td>" +
-              "<td>" + sizeLabel(m.size_bytes) + "</td>" +
-              "<td>" + deleteForm + "</td>" +
-              "</tr>";
+            return (
+              "<tr>" +
+              "<td>" +
+              preview +
+              "</td>" +
+              '<td><a href="' +
+              escHtml(m.url) +
+              '" target="_blank">' +
+              escHtml(m.filename) +
+              "</a></td>" +
+              "<td>" +
+              escHtml(m.mime_type) +
+              "</td>" +
+              "<td>" +
+              sizeLabel(m.size_bytes) +
+              "</td>" +
+              "<td>" +
+              deleteForm +
+              "</td>" +
+              "</tr>"
+            );
           })
           .join("");
 
@@ -50,7 +70,9 @@ export function mediaListView(items: MediaViewRow[], flash?: string): string {
     "</div>" +
     '<table class="pages-table">' +
     "<thead><tr><th>Preview</th><th>Filename</th><th>Type</th><th>Size</th><th>Actions</th></tr></thead>" +
-    "<tbody>" + rows + "</tbody>" +
+    "<tbody>" +
+    rows +
+    "</tbody>" +
     "</table>";
 
   return layout("Media", body, flash);
@@ -65,8 +87,8 @@ export function mediaUploadView(flash?: string): string {
     '<form method="POST" action="/admin/media/upload" enctype="multipart/form-data" class="edit-form">' +
     '<div class="form-group">' +
     '<label>File <span style="color:#e74c3c">*</span></label>' +
-    '<input type="file" name="file" accept="image/*,application/pdf" required>' +
-    "<small>Allowed: JPEG, PNG, GIF, WebP, SVG, PDF. Max 10 MB.</small>" +
+    '<input type="file" name="file" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf" required>' +
+    "<small>Allowed: JPEG, PNG, GIF, WebP, PDF. Max 10 MB. SVG blocked for security.</small>" +
     "</div>" +
     '<div class="form-group">' +
     "<label>Alt Text</label>" +

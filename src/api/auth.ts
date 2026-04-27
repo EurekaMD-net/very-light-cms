@@ -8,13 +8,31 @@ import { apiAuthGuard } from "../admin/middleware.js";
 import { authCookieOptions } from "../lib/cookie.js";
 import { rateLimit } from "../lib/rate-limit.js";
 import { recordAuthAttempt } from "../lib/auth-log.js";
+import { noStore } from "../lib/security-headers.js";
 
-const authRouter = new Hono();
+/** Variables set by apiAuthGuard on the Hono context. */
+type AuthVars = { Variables: { userId: string; role: string } };
 
-/** 5 login attempts per 15 minutes per IP. Applied to POST /api/auth/login. */
+const authRouter = new Hono<AuthVars>();
+
+// Auth responses must never be cached by intermediaries (Set-Cookie payloads,
+// identity responses).
+authRouter.use("*", noStore);
+
+/**
+ * 5 FAILED login attempts per 15 minutes per IP.
+ *
+ * Successful logins are uncounted (skipOn checks res.status). This avoids
+ * locking out a legitimate user who logs in normally a few times in a row.
+ * Only failures and validation errors count.
+ */
 const loginRateLimit = rateLimit({
   max: 5,
   windowMs: 15 * 60 * 1000,
+  skipOn: (c) => {
+    const status = c.res.status;
+    return status >= 200 && status < 300;
+  },
   onLimit: (c) => {
     recordAuthAttempt(c, {
       email: null,
@@ -26,8 +44,8 @@ const loginRateLimit = rateLimit({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email().max(254),
+  password: z.string().min(1).max(256),
 });
 
 /**
@@ -95,10 +113,8 @@ authRouter.post("/logout", (c) => {
  * Accepts Bearer token (CLI) or httpOnly cookie (Admin UI).
  */
 authRouter.get("/me", apiAuthGuard, (c) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = c as any;
-  const userId = ctx.get("userId") as string;
-  const role = ctx.get("role") as string;
+  const userId = c.get("userId");
+  const role = c.get("role");
   return ok(c, { userId, role });
 });
 
