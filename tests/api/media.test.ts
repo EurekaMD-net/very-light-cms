@@ -222,3 +222,17 @@ describe("LocalDriver read — path traversal containment", () => {
     await expect(driver.read("/etc/passwd")).rejects.toThrow();
   });
 });
+
+describe("LocalDriver delete — path traversal containment", () => {
+  it("throws when filename escapes uploadDir via ../", async () => {
+    const { LocalDriver } = await import("../../src/lib/storage.js");
+    const driver = new LocalDriver(testUploadDir);
+    await expect(driver.delete("../../etc/passwd")).rejects.toThrow();
+  });
+
+  it("throws for absolute path used as filename", async () => {
+    const { LocalDriver } = await import("../../src/lib/storage.js");
+    const driver = new LocalDriver(testUploadDir);
+    await expect(driver.delete("/etc/passwd")).rejects.toThrow();
+  });
+});

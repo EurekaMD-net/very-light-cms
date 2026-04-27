@@ -39,8 +39,14 @@ export class LocalDriver implements StorageDriver {
   }
 
   async delete(filename: string): Promise<void> {
+    const { resolve } = await import("node:path");
+    const root = resolve(this.uploadDir);
+    const target = resolve(root, filename);
+    if (!target.startsWith(root + "/") && target !== root) {
+      throw Object.assign(new Error("Path traversal denied"), { code: "ENOENT" });
+    }
     try {
-      await unlink(join(this.uploadDir, filename));
+      await unlink(target);
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
