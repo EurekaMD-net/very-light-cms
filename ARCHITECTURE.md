@@ -61,7 +61,6 @@ very-light-cms/
 │   │
 │   ├── api/                   # REST API (headless usage)
 │   │   ├── pages.ts           # GET /api/pages, POST /api/pages, etc.
-│   │   ├── media.ts           # GET /api/media, POST /api/media/upload
 │   │   └── auth.ts            # POST /api/auth/login, POST /logout, GET /me
 │   │
 │   ├── admin/                 # Admin UI (server-rendered)
@@ -69,16 +68,17 @@ very-light-cms/
 │   │   ├── views/             # HTML template strings (or .eta files)
 │   │   │   ├── layout.ts      # Base layout with nav
 │   │   │   ├── pages-list.ts  # Content list view
-│   │   │   ├── page-edit.ts   # Markdown editor + frontmatter form
-│   │   │   └── media.ts       # Media library view
+│   │   │   └── page-edit.ts   # Markdown editor + frontmatter form
 │   │   └── middleware.ts      # Auth guard for /admin/* routes
 │   │
 │   ├── public/                # Public site renderer (Phase 4)
-│   │   ├── router.ts          # /* route — slug → rendered page
+│   │   ├── router.ts          # GET / (homepage) + GET /:slug (single page)
 │   │   └── themes/            # Pluggable HTML themes (default: minimal)
 │   │       └── minimal/
-│   │           ├── base.html  # Base template
-│   │           └── page.html  # Single page template
+│   │           ├── layout.ts  # HTML shell — head, nav, footer, inline CSS
+│   │           ├── home.ts    # Homepage: list of published pages
+│   │           ├── page.ts    # Single page: title, date, tags, HTML body
+│   │           └── styles.ts  # CSS string (inline, no static file serving)
 │   │
 │   └── lib/                   # Shared utilities
 │       ├── auth.ts            # JWT sign/verify helpers
@@ -203,16 +203,10 @@ JWT_EXPIRES_IN=1h
 JWT_REFRESH_EXPIRES_IN=7d
 
 # Storage
-CONTENT_DIR=./content
-PUBLIC_DIR=./public
-STORAGE_DRIVER=local          # local | s3
+CONTENT_DIR=./content         # Directory for .md page files
 
 # Database
 DB_PATH=./data/cms.db
-
-# Optional S3
-S3_BUCKET=
-S3_REGION=
 S3_ACCESS_KEY=
 S3_SECRET_KEY=
 ```

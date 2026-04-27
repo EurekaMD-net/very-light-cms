@@ -27,7 +27,7 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 | 1     | Content engine (parser + renderer + DB)  | ✅ Done     |
 | 2     | REST API (read + write, no auth yet)     | ✅ Done     |
 | 3     | Auth (JWT) + Admin UI (server-rendered)  | ✅ Done     |
-| 4     | Public site renderer + default theme     | Pending     |
+| 4     | Public site renderer + default theme     | ✅ Done     |
 | 5     | Media upload + storage abstraction       | Pending     |
 | 6     | CLI (vlcms admin commands)               | Pending     |
 
