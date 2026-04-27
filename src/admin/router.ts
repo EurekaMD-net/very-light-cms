@@ -15,6 +15,7 @@ import {
 } from "../lib/storage.js";
 import { authCookieOptions } from "../lib/cookie.js";
 import { rateLimit } from "../lib/rate-limit.js";
+import { detectMimeMatches } from "../lib/mime-sniff.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -388,6 +389,17 @@ admin.post("/media/upload", authGuard, async (c) => {
   }
 
   const data = Buffer.from(await file.arrayBuffer());
+
+  // Magic-byte validation — declared MIME must match file content
+  if (!detectMimeMatches(data, file.type)) {
+    return c.html(
+      mediaUploadView(
+        "File content does not match declared type: " + file.type,
+      ),
+      400,
+    );
+  }
+
   const driver = new LocalDriver(config.uploadDir);
   const stored = await driver.write(file.name, data, file.type);
 

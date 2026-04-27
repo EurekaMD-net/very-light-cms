@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { getDatabase } from "../db/database.js";
 import { ok, fail } from "../lib/response.js";
-import { LocalDriver, ALLOWED_MIME_TYPES, MAX_UPLOAD_BYTES } from "../lib/storage.js";
+import {
+  LocalDriver,
+  ALLOWED_MIME_TYPES,
+  MAX_UPLOAD_BYTES,
+} from "../lib/storage.js";
+import { detectMimeMatches } from "../lib/mime-sniff.js";
 import { config } from "../config.js";
 import { apiAuthGuard } from "../admin/middleware.js";
 
@@ -16,7 +21,7 @@ media.get("/", (c) => {
   const db = getDatabase();
   const rows = db
     .prepare(
-      "SELECT id, filename, mime_type, size_bytes, alt_text, uploaded_at FROM media ORDER BY uploaded_at DESC"
+      "SELECT id, filename, mime_type, size_bytes, alt_text, uploaded_at FROM media ORDER BY uploaded_at DESC",
     )
     .all() as MediaRow[];
 
@@ -36,7 +41,8 @@ media.get("/", (c) => {
 media.post("/upload", async (c) => {
   const body = await c.req.parseBody();
   const file = body["file"];
-  const altText = typeof body["alt_text"] === "string" ? body["alt_text"] : null;
+  const altText =
+    typeof body["alt_text"] === "string" ? body["alt_text"] : null;
 
   if (!(file instanceof File)) {
     return fail(c, "Missing file field", 400);
@@ -46,7 +52,10 @@ media.post("/upload", async (c) => {
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
     return fail(
       c,
-      "Unsupported file type: " + file.type + ". Allowed: " + [...ALLOWED_MIME_TYPES].join(", "),
+      "Unsupported file type: " +
+        file.type +
+        ". Allowed: " +
+        [...ALLOWED_MIME_TYPES].join(", "),
       400,
     );
   }
@@ -57,13 +66,25 @@ media.post("/upload", async (c) => {
   }
 
   const data = Buffer.from(await file.arrayBuffer());
+
+  // Magic-byte validation — protects against MIME spoofing where the client
+  // declares image/png but uploads arbitrary bytes. Done after reading into
+  // memory but before any disk write.
+  if (!detectMimeMatches(data, file.type)) {
+    return fail(
+      c,
+      "File content does not match declared type: " + file.type,
+      400,
+    );
+  }
+
   const driver = new LocalDriver(config.uploadDir);
   const stored = await driver.write(file.name, data, file.type);
 
   const db = getDatabase();
   const result = db
     .prepare(
-      "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?) RETURNING id, filename, mime_type, size_bytes, alt_text, uploaded_at"
+      "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?) RETURNING id, filename, mime_type, size_bytes, alt_text, uploaded_at",
     )
     .get(stored, file.type, file.size, altText) as MediaRow;
 

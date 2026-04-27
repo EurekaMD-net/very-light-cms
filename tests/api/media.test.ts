@@ -21,10 +21,16 @@ vi.mock("../../src/config.js", () => ({
   config: {
     port: 3000,
     dbPath: ":memory:",
-    get contentDir() { return "/tmp/vlcms-media-content"; },
-    get jwtSecret() { return "test-secret-media"; },
+    get contentDir() {
+      return "/tmp/vlcms-media-content";
+    },
+    get jwtSecret() {
+      return "test-secret-media";
+    },
     jwtExpiresIn: "1h",
-    get uploadDir() { return testUploadDir; },
+    get uploadDir() {
+      return testUploadDir;
+    },
   },
 }));
 
@@ -74,9 +80,32 @@ afterEach(() => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function makeFile(name: string, content: string, type: string): File {
-  return new File([content], name, { type });
+function makeFile(
+  name: string,
+  content: string | Uint8Array,
+  type: string,
+): File {
+  // Wrap binary content via Blob to keep TS BlobPart typing happy under strict.
+  const blob =
+    typeof content === "string" ? content : new Blob([content as BlobPart]);
+  return new File([blob], name, { type });
 }
+
+/** Bytes with a real PNG header — passes magic-byte sniff. */
+const PNG_BYTES = new Uint8Array([
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a,
+  ...new Array(16).fill(0),
+]);
+
+/** Bytes starting with the PDF signature — passes magic-byte sniff. */
+const PDF_BYTES = new TextEncoder().encode("%PDF-1.4\n%fake-content\n");
 
 async function uploadFile(app: Hono, file: File, altText?: string) {
   const fd = new FormData();
@@ -92,7 +121,9 @@ async function uploadFile(app: Hono, file: File, altText?: string) {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 describe("GET /api/media", () => {
   it("returns empty list when no media", async () => {
-    const res = await buildApp().request("/api/media", { headers: authHeader() });
+    const res = await buildApp().request("/api/media", {
+      headers: authHeader(),
+    });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.items).toEqual([]);
@@ -105,8 +136,14 @@ describe("GET /api/media", () => {
   });
 
   it("returns uploaded files with url", async () => {
-    testDb.prepare("INSERT INTO media (filename, mime_type, size_bytes) VALUES (?, ?, ?)").run("photo.jpg", "image/jpeg", 1024);
-    const res = await buildApp().request("/api/media", { headers: authHeader() });
+    testDb
+      .prepare(
+        "INSERT INTO media (filename, mime_type, size_bytes) VALUES (?, ?, ?)",
+      )
+      .run("photo.jpg", "image/jpeg", 1024);
+    const res = await buildApp().request("/api/media", {
+      headers: authHeader(),
+    });
     const body = await res.json();
     expect(body.data.total).toBe(1);
     expect(body.data.items[0].url).toBe("/media/photo.jpg");
@@ -118,7 +155,10 @@ describe("POST /api/media/upload", () => {
     const app = buildApp();
     const fd = new FormData();
     fd.append("file", makeFile("test.png", "data", "image/png"));
-    const res = await app.request("/api/media/upload", { method: "POST", body: fd });
+    const res = await app.request("/api/media/upload", {
+      method: "POST",
+      body: fd,
+    });
     expect(res.status).toBe(401);
   });
 
@@ -135,14 +175,21 @@ describe("POST /api/media/upload", () => {
   });
 
   it("returns 400 for disallowed mime type", async () => {
-    const res = await uploadFile(buildApp(), makeFile("script.js", "alert(1)", "text/javascript"));
+    const res = await uploadFile(
+      buildApp(),
+      makeFile("script.js", "alert(1)", "text/javascript"),
+    );
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/Unsupported file type/i);
   });
 
   it("uploads image and returns 201 with url", async () => {
-    const res = await uploadFile(buildApp(), makeFile("hero.png", "PNG_DATA", "image/png"), "Hero image");
+    const res = await uploadFile(
+      buildApp(),
+      makeFile("hero.png", PNG_BYTES, "image/png"),
+      "Hero image",
+    );
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data.mime_type).toBe("image/png");
@@ -153,24 +200,48 @@ describe("POST /api/media/upload", () => {
   });
 
   it("persists media row in DB", async () => {
-    await uploadFile(buildApp(), makeFile("doc.pdf", "%PDF-data", "application/pdf"));
-    const row = testDb.prepare("SELECT * FROM media").get() as { mime_type: string };
+    await uploadFile(
+      buildApp(),
+      makeFile("doc.pdf", PDF_BYTES, "application/pdf"),
+    );
+    const row = testDb.prepare("SELECT * FROM media").get() as {
+      mime_type: string;
+    };
     expect(row.mime_type).toBe("application/pdf");
   });
 
   it("sanitizes filename (removes path traversal)", async () => {
-    const res = await uploadFile(buildApp(), makeFile("../../evil.png", "data", "image/png"));
+    const res = await uploadFile(
+      buildApp(),
+      makeFile("../../evil.png", PNG_BYTES, "image/png"),
+    );
     expect(res.status).toBe(201);
     const body = await res.json();
     // Stored filename must not contain ..
     expect(body.data.filename).not.toContain("..");
     expect(body.data.filename).not.toContain("/");
   });
+
+  it("rejects MIME spoofing: text content claiming image/png returns 400", async () => {
+    // Attacker uploads a script labeled image/png — magic-byte sniff catches it.
+    const fake = new TextEncoder().encode("<script>alert(1)</script>");
+    const res = await uploadFile(
+      buildApp(),
+      makeFile("evil.png", fake, "image/png"),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/does not match declared type/i);
+  });
 });
 
 describe("DELETE /api/media/:id", () => {
   it("returns 401 without auth", async () => {
-    testDb.prepare("INSERT INTO media (filename, mime_type, size_bytes) VALUES (?, ?, ?)").run("f.png", "image/png", 100);
+    testDb
+      .prepare(
+        "INSERT INTO media (filename, mime_type, size_bytes) VALUES (?, ?, ?)",
+      )
+      .run("f.png", "image/png", 100);
     const res = await buildApp().request("/api/media/1", { method: "DELETE" });
     expect(res.status).toBe(401);
   });
@@ -185,7 +256,10 @@ describe("DELETE /api/media/:id", () => {
 
   it("deletes file from disk and DB", async () => {
     // Upload first to get a real file
-    const uploadRes = await uploadFile(buildApp(), makeFile("todelete.png", "data", "image/png"));
+    const uploadRes = await uploadFile(
+      buildApp(),
+      makeFile("todelete.png", PNG_BYTES, "image/png"),
+    );
     const uploaded = await uploadRes.json();
     const id = uploaded.data.id;
     const filename = uploaded.data.filename;
@@ -250,7 +324,9 @@ describe("GET /media/:filename — route-level traversal regression", () => {
       const driver = new LocalDriver(testUploadDir);
       try {
         const data = await driver.read(filename);
-        return c.body(new Uint8Array(data), 200, { "Content-Type": "application/octet-stream" });
+        return c.body(new Uint8Array(data), 200, {
+          "Content-Type": "application/octet-stream",
+        });
       } catch {
         return c.notFound();
       }
