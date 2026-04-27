@@ -8,7 +8,7 @@ import { esc } from "../../../lib/escape.js";
 export interface PageListItem {
   slug: string;
   title: string;
-  description?: string | null;
+  description: string | null;
   date?: string | null;
   tags?: string[];
 }

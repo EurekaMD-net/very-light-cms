@@ -111,11 +111,11 @@ publicRouter.get("/:slug", (c) => {
 interface DbPageRow {
   slug: string;
   title: string;
-  description?: string | null;
-  tags?: string | null;
-  draft?: number;
-  created_at?: number;
-  updated_at?: number;
+  description: string | null;
+  tags: string | null;
+  draft: number;
+  created_at: number;
+  updated_at: number;
 }
 
 /** Format a Unix timestamp (seconds) as YYYY-MM-DD in America/Mexico_City timezone. */

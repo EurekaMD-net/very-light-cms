@@ -93,9 +93,9 @@ interface PageRow {
   id?: number;
   slug: string;
   title: string;
-  description?: string | null;
-  tags?: string | null;
-  draft?: number;
+  description: string | null;
+  tags: string | null;
+  draft: number;
   created_at: number;
   updated_at: number;
 }

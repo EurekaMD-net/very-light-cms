@@ -7,7 +7,7 @@ import { esc } from "../../../lib/escape.js";
 
 export interface PageViewData {
   title: string;
-  description?: string | null;
+  description: string | null;
   date?: string | null;
   tags?: string[];
   /** Rendered HTML from markdown body — NOT escaped (trusted renderer output) */
