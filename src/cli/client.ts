@@ -38,7 +38,11 @@ const CONFIG_FILE = join(homedir(), ".vlcms", "config.json");
 export function saveToken(baseUrl: string, token: string): void {
   const dir = join(homedir(), ".vlcms");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify({ baseUrl, token }, null, 2), "utf8");
+  writeFileSync(
+    CONFIG_FILE,
+    JSON.stringify({ baseUrl, token }, null, 2),
+    "utf8",
+  );
 }
 
 /**
@@ -56,7 +60,11 @@ function loadSavedConfig(): Partial<ClientConfig> {
 
 export function loadConfig(): ClientConfig {
   const saved = loadSavedConfig();
-  const baseUrl = (process.env["VLCMS_URL"] ?? saved.baseUrl ?? "http://localhost:3000").replace(/\/$/, "");
+  const baseUrl = (
+    process.env["VLCMS_URL"] ??
+    saved.baseUrl ??
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
   // env var takes precedence over saved file
   const token = process.env["VLCMS_TOKEN"] ?? saved.token;
   return { baseUrl, token };
@@ -75,7 +83,10 @@ export class ApiClient {
    * POST /api/auth/login — returns { token, userId, role } unwrapped.
    * Does NOT save the token; callers decide whether to persist.
    */
-  async login(email: string, password: string): Promise<{ token: string; userId: string; role: string }> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ token: string; userId: string; role: string }> {
     return this.post<{ token: string; userId: string; role: string }>(
       "/api/auth/login",
       { email, password },
@@ -88,15 +99,36 @@ export class ApiClient {
     return { ...h, ...extra };
   }
 
+  /**
+   * Fetch with one transparent retry on transient network errors
+   * (ECONNREFUSED, ETIMEDOUT, ENOTFOUND, ECONNRESET). HTTP status errors
+   * are NOT retried — those are real server responses, not transient.
+   * Backoff: 250ms before the single retry.
+   */
+  private async fetchWithRetry(
+    url: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      if (isTransientNetworkError(err)) {
+        await new Promise((r) => setTimeout(r, 250));
+        return await fetch(url, init);
+      }
+      throw err;
+    }
+  }
+
   async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       headers: this.headers(),
     });
     return this.unwrap<T>(res);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -108,7 +140,7 @@ export class ApiClient {
     // No Content-Type header — fetch sets multipart/form-data with boundary automatically
     const h: Record<string, string> = {};
     if (this.token) h["Authorization"] = `Bearer ${this.token}`;
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: h,
       body: form,
@@ -117,7 +149,7 @@ export class ApiClient {
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "PUT",
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -126,7 +158,7 @@ export class ApiClient {
   }
 
   async delete<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "DELETE",
       headers: this.headers(),
     });
@@ -153,4 +185,28 @@ export class ApiClient {
     }
     throw new ApiError(res.status, message);
   }
+}
+
+/**
+ * Identify network-level failures worth one retry. Node fetch wraps the
+ * underlying system error in `cause` (TypeError "fetch failed" with cause.code),
+ * but raw http(s) clients use `err.code` directly. Check both.
+ *
+ * Codes covered:
+ *   ECONNREFUSED — server is not listening (transient during restart)
+ *   ETIMEDOUT    — TCP timeout
+ *   ENOTFOUND    — DNS hiccup
+ *   ECONNRESET   — peer closed mid-request
+ */
+export function isTransientNetworkError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; cause?: { code?: string } };
+  const code = e.cause?.code ?? e.code;
+  if (!code) return false;
+  return (
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    code === "ENOTFOUND" ||
+    code === "ECONNRESET"
+  );
 }

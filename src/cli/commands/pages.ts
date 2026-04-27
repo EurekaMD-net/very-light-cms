@@ -40,10 +40,13 @@ interface PageDetail {
   draft: boolean;
   createdAt: number;
   updatedAt: number;
-  html?: string;   // GET /:slug returns html; POST/PUT return same minus html
+  html?: string; // GET /:slug returns html; POST/PUT return same minus html
 }
 
-export async function pagesCommand(client: ApiClient, args: string[]): Promise<void> {
+export async function pagesCommand(
+  client: ApiClient,
+  args: string[],
+): Promise<void> {
   const [sub, ...rest] = args;
 
   switch (sub) {
@@ -76,7 +79,8 @@ Subcommands:
 }
 
 async function pagesList(client: ApiClient): Promise<void> {
-  const { items, pagination } = await client.get<PageListResponse>("/api/pages");
+  const { items, pagination } =
+    await client.get<PageListResponse>("/api/pages");
   const rows = items.map((p) => ({
     slug: p.slug,
     title: p.title,
@@ -96,6 +100,12 @@ async function pagesGet(client: ApiClient, args: string[]): Promise<void> {
     process.exit(1);
   }
   const page = await client.get<PageDetail>(`/api/pages/${slug}`);
+  // In JSON mode, emit the full body so callers can pipe / process it.
+  // In human mode, truncate at 200 chars to keep terminal output readable.
+  const html = page.html ?? "";
+  const htmlOut = fmt.isJsonMode()
+    ? html
+    : html.slice(0, 200) + (html.length > 200 ? "…" : "");
   fmt.detail({
     slug: page.slug,
     title: page.title,
@@ -103,7 +113,7 @@ async function pagesGet(client: ApiClient, args: string[]): Promise<void> {
     description: page.description ?? "",
     created_at: new Date(page.createdAt * 1000).toISOString(),
     updated_at: new Date(page.updatedAt * 1000).toISOString(),
-    html: page.html ? (page.html.slice(0, 200) + (page.html.length > 200 ? "…" : "")) : "",
+    html: htmlOut,
   });
 }
 
@@ -111,7 +121,9 @@ async function pagesCreate(client: ApiClient, args: string[]): Promise<void> {
   const { flags } = parseFlags(args);
   const title = typeof flags["title"] === "string" ? flags["title"] : undefined;
   if (!title) {
-    fmt.error("Usage: vlcms pages create --title T [--file F] [--description D] [--publish]");
+    fmt.error(
+      "Usage: vlcms pages create --title T [--file F] [--description D] [--publish]",
+    );
     process.exit(1);
   }
 
@@ -125,10 +137,13 @@ async function pagesCreate(client: ApiClient, args: string[]): Promise<void> {
     content,
     status: flags["publish"] ? "published" : "draft",
   };
-  if (typeof flags["description"] === "string") body["description"] = flags["description"];
+  if (typeof flags["description"] === "string")
+    body["description"] = flags["description"];
 
   const page = await client.post<PageDetail>("/api/pages", body);
-  fmt.success(`Created page: ${page.slug} (${page.draft ? "draft" : "published"})`);
+  fmt.success(
+    `Created page: ${page.slug} (${page.draft ? "draft" : "published"})`,
+  );
   if (fmt.isJsonMode()) fmt.detail(page as unknown as Record<string, unknown>);
 }
 
@@ -136,13 +151,16 @@ async function pagesUpdate(client: ApiClient, args: string[]): Promise<void> {
   const { flags, positional } = parseFlags(args);
   const [slug] = positional;
   if (!slug) {
-    fmt.error("Usage: vlcms pages update <slug> [--title T] [--file F] [--publish] [--draft]");
+    fmt.error(
+      "Usage: vlcms pages update <slug> [--title T] [--file F] [--publish] [--draft]",
+    );
     process.exit(1);
   }
 
   const body: Record<string, unknown> = {};
   if (typeof flags["title"] === "string") body["title"] = flags["title"];
-  if (typeof flags["description"] === "string") body["description"] = flags["description"];
+  if (typeof flags["description"] === "string")
+    body["description"] = flags["description"];
   if (flags["publish"]) body["status"] = "published";
   if (flags["draft"]) body["status"] = "draft";
   if (typeof flags["file"] === "string") {
@@ -150,12 +168,16 @@ async function pagesUpdate(client: ApiClient, args: string[]): Promise<void> {
   }
 
   if (Object.keys(body).length === 0) {
-    fmt.error("Nothing to update — pass at least one flag (--title, --file, --publish, --draft)");
+    fmt.error(
+      "Nothing to update — pass at least one flag (--title, --file, --publish, --draft)",
+    );
     process.exit(1);
   }
 
   const page = await client.put<PageDetail>(`/api/pages/${slug}`, body);
-  fmt.success(`Updated page: ${page.slug} (${page.draft ? "draft" : "published"})`);
+  fmt.success(
+    `Updated page: ${page.slug} (${page.draft ? "draft" : "published"})`,
+  );
   if (fmt.isJsonMode()) fmt.detail(page as unknown as Record<string, unknown>);
 }
 
