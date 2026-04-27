@@ -45,7 +45,7 @@ describe("POST /api/auth/login", () => {
     if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
   });
 
-  it("returns 200 + sets cookie on valid credentials", async () => {
+  it("returns 200 + sets cookie + token in body on valid credentials", async () => {
     await seedUser("admin@test.com", "secret123");
     const app = buildApp();
     const res = await app.request("/api/auth/login", {
@@ -54,9 +54,31 @@ describe("POST /api/auth/login", () => {
       body: JSON.stringify({ email: "admin@test.com", password: "secret123" }),
     });
     expect(res.status).toBe(200);
+    // Cookie still set (Admin UI uses it)
     const cookie = res.headers.get("set-cookie");
     expect(cookie).toMatch(/token=/);
     expect(cookie).toMatch(/HttpOnly/i);
+    // Token also in JSON body (CLI uses it)
+    const body = await res.json() as { data: { token: string; userId: string; role: string } };
+    expect(typeof body.data.token).toBe("string");
+    expect(body.data.token.length).toBeGreaterThan(0);
+    expect(body.data.userId).toBeTruthy();
+    expect(body.data.role).toBe("admin");
+  });
+
+  it("login response token is a valid JWT", async () => {
+    await seedUser("jwt@test.com", "secret123", "editor");
+    const app = buildApp();
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "jwt@test.com", password: "secret123" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: { token: string; role: string } };
+    // JWT has 3 dot-separated parts
+    expect(body.data.token.split(".").length).toBe(3);
+    expect(body.data.role).toBe("editor");
   });
 
   it("returns 401 on wrong password", async () => {

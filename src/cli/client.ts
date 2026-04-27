@@ -3,11 +3,15 @@
  *
  * Reads config from env:
  *   VLCMS_URL   — base URL of the CMS server (default: http://localhost:3000)
- *   VLCMS_TOKEN — JWT obtained from POST /api/auth/login
+ *   VLCMS_TOKEN — JWT token. If not set, falls back to ~/.vlcms/config.json (written by `vlcms login`).
  *
  * All methods throw ApiError on non-2xx responses so callers don't have
  * to check status manually.
  */
+
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 export class ApiError extends Error {
   constructor(
@@ -24,9 +28,37 @@ export interface ClientConfig {
   token: string | undefined;
 }
 
+/** Path to the local token store written by `vlcms login`. */
+const CONFIG_FILE = join(homedir(), ".vlcms", "config.json");
+
+/**
+ * Save a token to ~/.vlcms/config.json.
+ * Directory is created if it doesn't exist.
+ */
+export function saveToken(baseUrl: string, token: string): void {
+  const dir = join(homedir(), ".vlcms");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(CONFIG_FILE, JSON.stringify({ baseUrl, token }, null, 2), "utf8");
+}
+
+/**
+ * Load saved credentials from ~/.vlcms/config.json, if the file exists.
+ */
+function loadSavedConfig(): Partial<ClientConfig> {
+  if (!existsSync(CONFIG_FILE)) return {};
+  try {
+    const raw = readFileSync(CONFIG_FILE, "utf8");
+    return JSON.parse(raw) as Partial<ClientConfig>;
+  } catch {
+    return {};
+  }
+}
+
 export function loadConfig(): ClientConfig {
-  const baseUrl = (process.env["VLCMS_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
-  const token = process.env["VLCMS_TOKEN"];
+  const saved = loadSavedConfig();
+  const baseUrl = (process.env["VLCMS_URL"] ?? saved.baseUrl ?? "http://localhost:3000").replace(/\/$/, "");
+  // env var takes precedence over saved file
+  const token = process.env["VLCMS_TOKEN"] ?? saved.token;
   return { baseUrl, token };
 }
 
@@ -37,6 +69,17 @@ export class ApiClient {
   constructor(config: ClientConfig) {
     this.baseUrl = config.baseUrl;
     this.token = config.token;
+  }
+
+  /**
+   * POST /api/auth/login — returns { token, userId, role } unwrapped.
+   * Does NOT save the token; callers decide whether to persist.
+   */
+  async login(email: string, password: string): Promise<{ token: string; userId: string; role: string }> {
+    return this.post<{ token: string; userId: string; role: string }>(
+      "/api/auth/login",
+      { email, password },
+    );
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {

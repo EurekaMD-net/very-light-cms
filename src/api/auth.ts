@@ -49,7 +49,7 @@ authRouter.post("/login", async (c) => {
     maxAge: 60 * 60 * 8, // 8 hours
   });
 
-  return ok(c, { ok: true });
+  return ok(c, { token, userId: String(user.id), role: user.role });
 });
 
 /**

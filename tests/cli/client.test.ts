@@ -109,6 +109,33 @@ describe("ApiClient — 204 No Content", () => {
   });
 });
 
+describe("ApiClient.login", () => {
+  it("POSTs credentials and returns unwrapped token payload", async () => {
+    const spy = mockFetch(200, {
+      data: { token: "jwt.token.here", userId: "1", role: "admin" },
+    });
+    vi.stubGlobal("fetch", spy);
+    const client = makeClient();
+    const result = await client.login("admin@test.com", "secret");
+    expect(result).toEqual({ token: "jwt.token.here", userId: "1", role: "admin" });
+    const [url, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE}/api/auth/login`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      email: "admin@test.com",
+      password: "secret",
+    });
+  });
+
+  it("throws ApiError on 401 invalid credentials", async () => {
+    vi.stubGlobal("fetch", mockFetch(401, { error: "Invalid credentials" }));
+    await expect(makeClient().login("x@x.com", "wrong")).rejects.toMatchObject({
+      status: 401,
+      message: "Invalid credentials",
+    });
+  });
+});
+
 describe("ApiError", () => {
   it("is instanceof ApiError", () => {
     const e = new ApiError(404, "not found");
