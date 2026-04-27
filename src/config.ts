@@ -13,7 +13,7 @@ function optional(key: string, fallback: string): string {
 export const config = {
   port: parseInt(optional("PORT", "3333"), 10),
   dbPath: (() => { const p = optional("DB_PATH", "./data/cms.db"); return p === ":memory:" ? p : resolve(p); })(),
-  contentDir: resolve(optional("CONTENT_DIR", "./content/pages")),
+  get contentDir(): string { const p = optional("CONTENT_DIR", "./content/pages"); return resolve(p); },
   get jwtSecret(): string { return required("JWT_SECRET"); },
   jwtExpiresIn: optional("JWT_EXPIRES_IN", "8h"),
   adminEmail: optional("ADMIN_EMAIL", "admin@example.com"),

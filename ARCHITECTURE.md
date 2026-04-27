@@ -73,7 +73,7 @@ very-light-cms/
 │   │   │   └── media.ts       # Media library view
 │   │   └── middleware.ts      # Auth guard for /admin/* routes
 │   │
-│   ├── public/                # Public site renderer
+│   ├── public/                # Public site renderer (Phase 4)
 │   │   ├── router.ts          # /* route — slug → rendered page
 │   │   └── themes/            # Pluggable HTML themes (default: minimal)
 │   │       └── minimal/
@@ -238,10 +238,10 @@ S3_SECRET_KEY=
 | 1     | Content engine (parser + renderer), SQLite schema  | ✅ Done  |
 | 2     | REST API (pages read + write, no auth yet)         | ✅ Done  |
 | 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)   | ✅ Done  |
-| 4     | Public site renderer + default theme               | Pending  |
+| 4     | Public site renderer + default theme               | ✅ Done  |
 | 5     | Media upload + storage abstraction                 | Pending  |
 | 6     | CLI (vlcms admin commands)                         | Pending  |
 
 ---
 
-*Last updated: 2026-04-26 — Phase 3 complete*
+*Last updated: 2026-04-27 — Phase 4 complete*

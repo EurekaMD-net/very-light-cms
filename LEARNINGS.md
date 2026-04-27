@@ -143,3 +143,19 @@ Edit form: render slug as `readonly` input. Don't send it in the PUT body (or ig
 
 ### `buildMarkdown()` helper — keep frontmatter canonical
 All writes (create, update, publish/unpublish) go through a single `buildMarkdown()` helper. This ensures frontmatter stays consistent and avoids drift between DB and file states.
+
+---
+
+## Phase 4 — Public Site Renderer
+
+### Config singleton + ESM caching (recurrence)
+`contentDir` suffered the same ESM hoisting issue as `jwtSecret` — evaluated once at module parse, not per-call. Pattern confirmed: **any config field that tests need to override must be a getter**, not a top-level property. Fixed by converting `contentDir` to a getter in `config.ts`. Rule: when adding new env-driven config fields, always use getter if the field will be overridden in tests.
+
+### Mount order matters
+The public router catches `/*` — it MUST be mounted after all other routes (`/api/*`, `/admin/*`). Mounting it first would shadow everything. Documented explicitly in `index.ts` comments.
+
+### ETag with Hono
+`c.html(html, 200, { ETag: etag })` — the third argument to `c.html()` sets response headers. Works cleanly. For 304, `c.body(null, 304)` — no body, no content-type.
+
+### CSS as inline `<style>` string
+Zero external dependencies for theming. The CSS string is evaluated once at import time and embedded in every page response. No file serving, no build step, no cache invalidation headaches. Trade-off: no browser CSS caching across pages. Acceptable for Phase 4; a `GET /static/theme.css` route can be added in Phase 5.

@@ -7,6 +7,7 @@ import { pagesWrite } from "./api/pages-write.js";
 import { authRouter } from "./api/auth.js";
 import { admin } from "./admin/router.js";
 import { apiAuthGuard } from "./admin/middleware.js";
+import { publicRouter } from "./public/router.js";
 
 const app = new Hono();
 
@@ -48,6 +49,13 @@ app.route("/api/pages", pagesWrite);
 // POST /admin/pages/:slug/publish  → publish
 // POST /admin/pages/:slug/unpublish → unpublish
 app.route("/admin", admin);
+
+// ── Public site ───────────────────────────────────────────────────────────────
+// Server-rendered public pages. Anonymous access. Drafts return 404.
+// GET  /           → homepage (list of published pages)
+// GET  /:slug      → single published page
+// NOTE: Must be mounted LAST — it catches /* which would shadow all other routes.
+app.route("/", publicRouter);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 // Initialize DB at startup — applies schema.sql (idempotent)
