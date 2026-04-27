@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 // Use in-memory DB + temp content dir for isolation
 process.env.DB_PATH = ":memory:";
+process.env.JWT_SECRET = "test-secret-for-vitest";
 const testContentDir = "/tmp/vlcms-auth-test-content";
 process.env.CONTENT_DIR = testContentDir;
 

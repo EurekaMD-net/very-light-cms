@@ -6,6 +6,7 @@ import { hashPassword } from "../../src/lib/auth.js";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 
 process.env.DB_PATH = ":memory:";
+process.env.JWT_SECRET = "test-secret-for-vitest";
 const testContentDir = "/tmp/vlcms-admin-test-content";
 process.env.CONTENT_DIR = testContentDir;
 

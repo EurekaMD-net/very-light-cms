@@ -14,9 +14,9 @@ export const config = {
   port: parseInt(optional("PORT", "3333"), 10),
   dbPath: (() => { const p = optional("DB_PATH", "./data/cms.db"); return p === ":memory:" ? p : resolve(p); })(),
   contentDir: resolve(optional("CONTENT_DIR", "./content/pages")),
-  jwtSecret: optional("JWT_SECRET", "change-me-in-production"),
+  get jwtSecret(): string { return required("JWT_SECRET"); },
   jwtExpiresIn: optional("JWT_EXPIRES_IN", "8h"),
   adminEmail: optional("ADMIN_EMAIL", "admin@example.com"),
-} as const;
+};
 
 export type Config = typeof config;
