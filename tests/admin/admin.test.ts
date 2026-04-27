@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { admin } from "../../src/admin/router.js";
 import { getDatabase, closeDatabase } from "../../src/db/database.js";
 import { hashPassword } from "../../src/lib/auth.js";
+import { __resetRateLimitForTests } from "../../src/lib/rate-limit.js";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 
 process.env.DB_PATH = ":memory:";
@@ -19,14 +20,16 @@ function buildApp() {
 async function seedUser(email: string, password: string, role = "admin") {
   const db = getDatabase();
   const hash = await hashPassword(password);
-  db.prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)").run(
-    email,
-    hash,
-    role
-  );
+  db.prepare(
+    "INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)",
+  ).run(email, hash, role);
 }
 
-async function loginAndGetCookie(app: Hono, email: string, password: string): Promise<string> {
+async function loginAndGetCookie(
+  app: Hono,
+  email: string,
+  password: string,
+): Promise<string> {
   const res = await app.request("/admin/login", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -36,6 +39,10 @@ async function loginAndGetCookie(app: Hono, email: string, password: string): Pr
   const match = cookie.match(/token=([^;]+)/);
   return match?.[1] ?? "";
 }
+
+// Reset the rate limiter between every test so login attempts in one test
+// don't tip the cap in the next.
+beforeEach(() => __resetRateLimitForTests());
 
 describe("GET /admin/login", () => {
   it("returns 200 with login form", async () => {
@@ -67,7 +74,10 @@ describe("POST /admin/login", () => {
     const res = await app.request("/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ email: "admin@test.com", password: "pass123" }).toString(),
+      body: new URLSearchParams({
+        email: "admin@test.com",
+        password: "pass123",
+      }).toString(),
     });
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/admin");
@@ -81,7 +91,10 @@ describe("POST /admin/login", () => {
     const res = await app.request("/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ email: "admin@test.com", password: "wrong" }).toString(),
+      body: new URLSearchParams({
+        email: "admin@test.com",
+        password: "wrong",
+      }).toString(),
     });
     expect(res.status).toBe(401);
     const html = await res.text();
@@ -190,7 +203,9 @@ describe("POST /admin/pages (create)", () => {
 
     // Verify page exists in DB
     const db = getDatabase();
-    const page = db.prepare("SELECT * FROM pages WHERE slug = ?").get("my-new-page") as { title: string } | undefined;
+    const page = db
+      .prepare("SELECT * FROM pages WHERE slug = ?")
+      .get("my-new-page") as { title: string } | undefined;
     expect(page?.title).toBe("My New Page");
   });
 
@@ -199,11 +214,25 @@ describe("POST /admin/pages (create)", () => {
     const app = buildApp();
     const token = await loginAndGetCookie(app, "admin@test.com", "pass123");
 
-    const form = new URLSearchParams({ title: "Dup Page", slug: "", description: "", tags: "", body: "x", draft: "1" }).toString();
-    const headers = { Cookie: `token=${token}`, "Content-Type": "application/x-www-form-urlencoded" };
+    const form = new URLSearchParams({
+      title: "Dup Page",
+      slug: "",
+      description: "",
+      tags: "",
+      body: "x",
+      draft: "1",
+    }).toString();
+    const headers = {
+      Cookie: `token=${token}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
 
     await app.request("/admin/pages", { method: "POST", headers, body: form });
-    const res2 = await app.request("/admin/pages", { method: "POST", headers, body: form });
+    const res2 = await app.request("/admin/pages", {
+      method: "POST",
+      headers,
+      body: form,
+    });
     expect(res2.status).toBe(409);
   });
 });
@@ -228,8 +257,18 @@ describe("POST /admin/pages/:slug/publish", () => {
     // Create a draft page first
     await app.request("/admin/pages", {
       method: "POST",
-      headers: { Cookie: `token=${token}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ title: "To Publish", slug: "to-publish", description: "", tags: "", body: "content", draft: "1" }).toString(),
+      headers: {
+        Cookie: `token=${token}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        title: "To Publish",
+        slug: "to-publish",
+        description: "",
+        tags: "",
+        body: "content",
+        draft: "1",
+      }).toString(),
     });
 
     const pubRes = await app.request("/admin/pages/to-publish/publish", {
@@ -239,7 +278,9 @@ describe("POST /admin/pages/:slug/publish", () => {
     expect(pubRes.status).toBe(302);
 
     const db = getDatabase();
-    const page = db.prepare("SELECT draft FROM pages WHERE slug = ?").get("to-publish") as { draft: number } | undefined;
+    const page = db
+      .prepare("SELECT draft FROM pages WHERE slug = ?")
+      .get("to-publish") as { draft: number } | undefined;
     expect(page?.draft).toBe(0);
   });
 });

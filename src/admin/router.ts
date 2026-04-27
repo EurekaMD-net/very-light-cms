@@ -14,12 +14,29 @@ import {
   MAX_UPLOAD_BYTES,
 } from "../lib/storage.js";
 import { authCookieOptions } from "../lib/cookie.js";
+import { rateLimit } from "../lib/rate-limit.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.js";
 
 export const admin = new Hono();
+
+/**
+ * 5 login attempts per 15 minutes per IP. On limit, re-render the login
+ * form with a flash message instead of returning JSON (admin is HTML-only).
+ */
+const adminLoginRateLimit = rateLimit({
+  max: 5,
+  windowMs: 15 * 60 * 1000,
+  onLimit: (c, retryAfterSec) =>
+    c.html(
+      loginView({
+        error: `Too many attempts. Try again in ${retryAfterSec}s.`,
+      }),
+      429,
+    ),
+});
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 
@@ -30,7 +47,7 @@ admin.get("/login", (c) => {
   return c.html(loginView());
 });
 
-admin.post("/login", async (c) => {
+admin.post("/login", adminLoginRateLimit, async (c) => {
   const body = await c.req.parseBody();
   const email = String(body["email"] ?? "")
     .trim()

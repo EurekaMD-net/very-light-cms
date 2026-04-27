@@ -42,10 +42,16 @@ vi.mock("../../src/config.js", () => ({
   config: {
     port: 3000,
     dbPath: ":memory:",
-    get contentDir() { return testContentDir; },
-    get jwtSecret() { return "integration-test-secret"; },
+    get contentDir() {
+      return testContentDir;
+    },
+    get jwtSecret() {
+      return "integration-test-secret";
+    },
     jwtExpiresIn: "1h",
-    get uploadDir() { return testUploadDir; },
+    get uploadDir() {
+      return testUploadDir;
+    },
     siteTitle: "Test CMS",
   },
 }));
@@ -98,7 +104,11 @@ function applySchema(db: ReturnType<typeof Database>): void {
   `);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { __resetRateLimitForTests } =
+    await import("../../src/lib/rate-limit.js");
+  __resetRateLimitForTests();
+
   testDb = new Database(":memory:");
   applySchema(testDb);
 
@@ -110,9 +120,9 @@ beforeEach(() => {
 
   // Seed admin user
   const hash = bcrypt.hashSync("secret123", 4);
-  testDb.prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)").run(
-    "admin@test.com", hash, "admin"
-  );
+  testDb
+    .prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)")
+    .run("admin@test.com", hash, "admin");
 });
 
 afterEach(() => {
@@ -136,7 +146,9 @@ describe("E2E: pages create -> list -> media upload -> list -> delete", () => {
       body: JSON.stringify({ email: "admin@test.com", password: "secret123" }),
     });
     expect(loginRes.status).toBe(200);
-    const loginBody = await json<{ data: { token: string; userId: string; role: string } }>(loginRes);
+    const loginBody = await json<{
+      data: { token: string; userId: string; role: string };
+    }>(loginRes);
     const token = loginBody.data.token;
     expect(typeof token).toBe("string");
     expect(token.length).toBeGreaterThan(20);
@@ -154,7 +166,9 @@ describe("E2E: pages create -> list -> media upload -> list -> delete", () => {
       }),
     });
     expect(createRes.status).toBe(201);
-    const createBody = await json<{ data: { slug: string; draft: boolean } }>(createRes);
+    const createBody = await json<{ data: { slug: string; draft: boolean } }>(
+      createRes,
+    );
     const slug = createBody.data.slug;
     expect(typeof slug).toBe("string");
     expect(createBody.data.draft).toBe(true);
@@ -188,10 +202,14 @@ describe("E2E: pages create -> list -> media upload -> list -> delete", () => {
     // Step 5: Upload media
     const imgBytes = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==",
-      "base64"
+      "base64",
     );
     const form = new FormData();
-    form.append("file", new Blob([imgBytes], { type: "image/png" }), "test.png");
+    form.append(
+      "file",
+      new Blob([imgBytes], { type: "image/png" }),
+      "test.png",
+    );
     form.append("alt_text", "A test image");
 
     const uploadRes = await app.request("/api/media/upload", {
@@ -200,7 +218,9 @@ describe("E2E: pages create -> list -> media upload -> list -> delete", () => {
       body: form,
     });
     expect(uploadRes.status).toBe(201);
-    const uploadBody = await json<{ data: { id: number; filename: string; url: string } }>(uploadRes);
+    const uploadBody = await json<{
+      data: { id: number; filename: string; url: string };
+    }>(uploadRes);
     const mediaId = uploadBody.data.id;
     expect(typeof mediaId).toBe("number");
     expect(uploadBody.data.filename).toContain("test");
@@ -228,8 +248,12 @@ describe("E2E: pages create -> list -> media upload -> list -> delete", () => {
     expect(deleteRes.status).toBe(200);
 
     // Step 8: List media -- empty after delete
-    const listAfterDeleteRes = await app.request("/api/media", { headers: auth });
-    const listAfterBody = await json<{ data: { items: unknown[]; total: number } }>(listAfterDeleteRes);
+    const listAfterDeleteRes = await app.request("/api/media", {
+      headers: auth,
+    });
+    const listAfterBody = await json<{
+      data: { items: unknown[]; total: number };
+    }>(listAfterDeleteRes);
     expect(listAfterBody.data.items).toHaveLength(0);
     expect(listAfterBody.data.total).toBe(0);
   });

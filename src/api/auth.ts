@@ -6,8 +6,15 @@ import { signToken, verifyPassword } from "../lib/auth.js";
 import { ok, fail } from "../lib/response.js";
 import { apiAuthGuard } from "../admin/middleware.js";
 import { authCookieOptions } from "../lib/cookie.js";
+import { rateLimit } from "../lib/rate-limit.js";
 
 const authRouter = new Hono();
+
+/** 5 login attempts per 15 minutes per IP. Applied to POST /api/auth/login. */
+const loginRateLimit = rateLimit({
+  max: 5,
+  windowMs: 15 * 60 * 1000,
+});
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -19,7 +26,7 @@ const loginSchema = z.object({
  * Body: { email, password }
  * Sets httpOnly cookie "token" on success.
  */
-authRouter.post("/login", async (c) => {
+authRouter.post("/login", loginRateLimit, async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {

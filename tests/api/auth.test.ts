@@ -6,6 +6,7 @@ import { apiAuthGuard } from "../../src/admin/middleware.js";
 import { pagesWrite } from "../../src/api/pages-write.js";
 import { getDatabase, closeDatabase } from "../../src/db/database.js";
 import { hashPassword } from "../../src/lib/auth.js";
+import { __resetRateLimitForTests } from "../../src/lib/rate-limit.js";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,12 +27,14 @@ function buildApp() {
 async function seedUser(email: string, password: string, role = "admin") {
   const db = getDatabase();
   const hash = await hashPassword(password);
-  db.prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)").run(
-    email,
-    hash,
-    role
-  );
+  db.prepare(
+    "INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)",
+  ).run(email, hash, role);
 }
+
+// Reset the rate limiter between every test in this file so that login
+// attempts in one test don't carry over and trip the limit in the next.
+beforeEach(() => __resetRateLimitForTests());
 
 describe("POST /api/auth/login", () => {
   beforeEach(() => {
@@ -59,7 +62,9 @@ describe("POST /api/auth/login", () => {
     expect(cookie).toMatch(/token=/);
     expect(cookie).toMatch(/HttpOnly/i);
     // Token also in JSON body (CLI uses it)
-    const body = await res.json() as { data: { token: string; userId: string; role: string } };
+    const body = (await res.json()) as {
+      data: { token: string; userId: string; role: string };
+    };
     expect(typeof body.data.token).toBe("string");
     expect(body.data.token.length).toBeGreaterThan(0);
     expect(body.data.userId).toBeTruthy();
@@ -75,7 +80,9 @@ describe("POST /api/auth/login", () => {
       body: JSON.stringify({ email: "jwt@test.com", password: "secret123" }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { data: { token: string; role: string } };
+    const body = (await res.json()) as {
+      data: { token: string; role: string };
+    };
     // JWT has 3 dot-separated parts
     expect(body.data.token.split(".").length).toBe(3);
     expect(body.data.role).toBe("editor");
@@ -90,7 +97,7 @@ describe("POST /api/auth/login", () => {
       body: JSON.stringify({ email: "admin@test.com", password: "wrongpass" }),
     });
     expect(res.status).toBe(401);
-    const body = await res.json() as { error: string };
+    const body = (await res.json()) as { error: string };
     expect(body.error).toBeTruthy();
   });
 
@@ -136,6 +143,49 @@ describe("POST /api/auth/logout", () => {
   });
 });
 
+describe("POST /api/auth/login — rate limit", () => {
+  beforeEach(() => {
+    closeDatabase();
+    if (existsSync(testContentDir)) rmSync(testContentDir, { recursive: true });
+    mkdirSync(testContentDir, { recursive: true });
+  });
+
+  afterEach(() => closeDatabase());
+
+  it("returns 429 + Retry-After after 5 failed attempts in 15min window", async () => {
+    await seedUser("admin@test.com", "secret123");
+    const app = buildApp();
+
+    // Use a fixed XFF so the rate-limit key is stable across attempts
+    const headers = {
+      "Content-Type": "application/json",
+      "x-forwarded-for": "192.0.2.99",
+    };
+    const body = JSON.stringify({ email: "admin@test.com", password: "wrong" });
+
+    // 5 failed attempts → all return 401
+    for (let i = 0; i < 5; i++) {
+      const res = await app.request("/api/auth/login", {
+        method: "POST",
+        headers,
+        body,
+      });
+      expect(res.status).toBe(401);
+    }
+
+    // 6th attempt → 429
+    const res = await app.request("/api/auth/login", {
+      method: "POST",
+      headers,
+      body,
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    const json = await res.json();
+    expect(json.code).toBe("TOO_MANY_REQUESTS");
+  });
+});
+
 describe("GET /api/auth/me", () => {
   beforeEach(() => {
     closeDatabase();
@@ -171,7 +221,9 @@ describe("GET /api/auth/me", () => {
       headers: { Cookie: `token=${token}` },
     });
     expect(meRes.status).toBe(200);
-    const body = await meRes.json() as { data: { userId: string; role: string } };
+    const body = (await meRes.json()) as {
+      data: { userId: string; role: string };
+    };
     expect(body.data.role).toBe("editor");
     expect(typeof body.data.userId).toBe("string");
   });
@@ -193,7 +245,9 @@ describe("GET /api/auth/me", () => {
       headers: { Authorization: `Bearer ${bearerToken}` },
     });
     expect(meRes.status).toBe(200);
-    const body = await meRes.json() as { data: { userId: string; role: string } };
+    const body = (await meRes.json()) as {
+      data: { userId: string; role: string };
+    };
     expect(body.data.role).toBe("admin");
     expect(typeof body.data.userId).toBe("string");
   });
