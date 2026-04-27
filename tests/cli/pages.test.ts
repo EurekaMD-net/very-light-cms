@@ -31,11 +31,9 @@ function suppressOutput() {
 describe("pages list", () => {
   it("calls GET /api/pages and prints table", async () => {
     const client = makeClient({
-      get: vi.fn().mockResolvedValue({
-        pages: [
-          { id: 1, slug: "hello", title: "Hello", status: "published", created_at: 1700000000 },
-        ],
-      }),
+      get: vi.fn().mockResolvedValue([
+        { id: 1, slug: "hello", title: "Hello", status: "published", created_at: 1700000000 },
+      ]),
     });
     suppressOutput();
     await pagesCommand(client, ["list"]);

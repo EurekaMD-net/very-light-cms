@@ -31,12 +31,6 @@ interface PageDetail extends PageListItem {
   updated_at: number;
 }
 
-interface PagesListResponse {
-  pages: PageListItem[];
-}
-
-
-
 export async function pagesCommand(client: ApiClient, args: string[]): Promise<void> {
   const [sub, ...rest] = args;
 
@@ -70,8 +64,8 @@ Subcommands:
 }
 
 async function pagesList(client: ApiClient): Promise<void> {
-  const data = await client.get<PagesListResponse>("/api/pages");
-  const rows = data.pages.map((p) => ({
+  const data = await client.get<PageListItem[]>("/api/pages");
+  const rows = data.map((p) => ({
     id: p.id,
     slug: p.slug,
     title: p.title,

@@ -29,14 +29,14 @@ afterEach(() => {
 
 describe("ApiClient.get", () => {
   it("returns parsed JSON on 200", async () => {
-    vi.stubGlobal("fetch", mockFetch(200, { pages: [] }));
+    vi.stubGlobal("fetch", mockFetch(200, { data: { pages: [] } }));
     const client = makeClient(TOKEN);
     const result = await client.get("/api/pages");
     expect(result).toEqual({ pages: [] });
   });
 
   it("sends Authorization header when token provided", async () => {
-    const spy = mockFetch(200, {});
+    const spy = mockFetch(200, { data: {} });
     vi.stubGlobal("fetch", spy);
     await makeClient(TOKEN).get("/api/pages");
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
@@ -44,7 +44,7 @@ describe("ApiClient.get", () => {
   });
 
   it("omits Authorization header when no token", async () => {
-    const spy = mockFetch(200, {});
+    const spy = mockFetch(200, { data: {} });
     vi.stubGlobal("fetch", spy);
     await makeClient().get("/api/pages");
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
@@ -87,7 +87,7 @@ describe("ApiClient.get", () => {
 
 describe("ApiClient.put", () => {
   it("sends PUT with JSON body and Authorization header", async () => {
-    const spy = mockFetch(200, { slug: "hello", status: "published" });
+    const spy = mockFetch(200, { data: { slug: "hello", status: "published" } });
     vi.stubGlobal("fetch", spy);
     await makeClient(TOKEN).put("/api/pages/hello", { title: "Updated" });
     const [, init] = spy.mock.calls[0] as [string, RequestInit];

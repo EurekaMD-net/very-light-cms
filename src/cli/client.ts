@@ -94,7 +94,9 @@ export class ApiClient {
     if (res.ok) {
       // 204 No Content — return empty object
       if (res.status === 204) return {} as T;
-      return res.json() as Promise<T>;
+      // Server always wraps success in { data: ... } via lib/response.ts ok()
+      const envelope = (await res.json()) as { data: T };
+      return envelope.data;
     }
 
     // Try to extract a message from the JSON body
