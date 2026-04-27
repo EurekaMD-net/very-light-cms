@@ -162,3 +162,29 @@ Zero external dependencies for theming. The CSS string is evaluated once at impo
 
 ### Markdown rendering — admin = trusted, no sanitization needed
 `marked` v15 dropped the `sanitize` option. A Markdown post containing `<script>alert(1)</script>` will render the tag as-is. This is a deliberate design decision: only authenticated admins can write content, so the trust boundary is enforced at the auth layer, not the render layer. If a public-facing submission flow is ever added (comments, user forms), sanitization must be applied at that boundary before content reaches the renderer. `dompurify` (server-side via jsdom) is the reference implementation.
+
+
+---
+
+## Phase 5 -- Media Upload + Storage Abstraction
+
+### StorageDriver interface -- 4-method contract
+write(filename, buffer, mime), read(filename), delete(filename), url(filename). The interface is the swap point for future S3/R2 drivers. LocalDriver implements all four. Established as the canonical pattern for any storage backend added later.
+
+### sanitizeFilename() runs only on write, not on read
+Sanitization at write-time (slug + timestamp) ensures stored filenames are safe. But read() and delete() receive arbitrary client input -- they need their own containment check independent of sanitization. Lesson: "safe on the way in" is NOT "safe on the way out".
+
+### Defense-in-depth path containment -- both layers
+Pattern: resolve(join(root, filename)) then assert startsWith(resolve(root) + "/"). Must live in BOTH the driver method (LocalDriver.read, LocalDriver.delete) AND the route handler catch -> 404. Driver guard protects all future consumers; route guard protects the HTTP surface. Neither alone is sufficient.
+
+### URL-encoded path traversal
+GET /media/..%2F..%2Fetc%2Fpasswd -- Hono URL-decodes %2F to / before passing to the param handler. The filename arriving at LocalDriver.read() is ../../etc/passwd, not the encoded string. Tests must use the decoded form; the route receives decoded automatically.
+
+### SVG explicitly blocked from ALLOWED_MIME_TYPES
+image/svg+xml removed. SVG is XML that executes JavaScript -- if stored and served from the same origin, a crafted SVG can steal cookies and session tokens. Accepted types: raster images (jpeg, png, gif, webp) + application/pdf. If SVG is needed in the future, serve from a separate origin or sanitize with DOMPurify before storing.
+
+### apiAuthGuard belongs inside the router, not at the mount site
+Applying app.use("/api/media", apiAuthGuard) at the mount site only guards the exact path, not sub-routes (/api/media/upload, /api/media/:id). Guard must be applied inside the router per-route or as router-level middleware. The test suite was initially wrong here -- fixed by moving the guard into media.ts and removing the external app.use from tests.
+
+### .. in filename not eliminated by slash-to-underscore substitution
+replace(/[\/\\]/g, "_") converts slashes but leaves .. intact -- ../evil.png becomes .._evil.png, still a traversal risk if the containment check is ever missed. Added replace(/\.{2,}/g, "_") to remove consecutive dots. Belt-and-suspenders: sanitize on write AND contain on read/delete.
