@@ -16,19 +16,31 @@ import type { ApiClient } from "../client.js";
 import { fmt } from "../format.js";
 import { parseFlags } from "../parse-flags.js";
 
-// Shape returned by GET /api/pages
+// Shape returned by GET /api/pages (items array inside { items, pagination })
 interface PageListItem {
-  id: number;
   slug: string;
   title: string;
-  status: string;
-  created_at: number;
+  description: string | null;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
 }
 
-interface PageDetail extends PageListItem {
-  content: string;
+interface PageListResponse {
+  items: PageListItem[];
+  pagination: { limit: number; offset: number; total: number };
+}
+
+// Shape returned by GET /api/pages/:slug and POST/PUT /api/pages
+interface PageDetail {
+  slug: string;
+  title: string;
   description: string | null;
-  updated_at: number;
+  tags: string[];
+  draft: boolean;
+  createdAt: number;
+  updatedAt: number;
+  html?: string;   // GET /:slug returns html; POST/PUT return same minus html
 }
 
 export async function pagesCommand(client: ApiClient, args: string[]): Promise<void> {
@@ -64,17 +76,17 @@ Subcommands:
 }
 
 async function pagesList(client: ApiClient): Promise<void> {
-  const data = await client.get<PageListItem[]>("/api/pages");
-  const rows = data.map((p) => ({
-    id: p.id,
+  const { items, pagination } = await client.get<PageListResponse>("/api/pages");
+  const rows = items.map((p) => ({
     slug: p.slug,
     title: p.title,
-    status: p.status,
-    created: new Date(p.created_at * 1000).toLocaleDateString("en-CA", {
+    description: p.description ?? "",
+    created: new Date(p.createdAt * 1000).toLocaleDateString("en-CA", {
       timeZone: "America/Mexico_City",
     }),
   }));
-  fmt.table(rows, ["id", "slug", "title", "status", "created"]);
+  fmt.table(rows, ["slug", "title", "description", "created"]);
+  fmt.info(`Total: ${pagination.total} (showing ${items.length})`);
 }
 
 async function pagesGet(client: ApiClient, args: string[]): Promise<void> {
@@ -85,14 +97,13 @@ async function pagesGet(client: ApiClient, args: string[]): Promise<void> {
   }
   const page = await client.get<PageDetail>(`/api/pages/${slug}`);
   fmt.detail({
-    id: page.id,
     slug: page.slug,
     title: page.title,
-    status: page.status,
-    description: page.description,
-    created_at: new Date(page.created_at * 1000).toISOString(),
-    updated_at: new Date(page.updated_at * 1000).toISOString(),
-    content: page.content.slice(0, 200) + (page.content.length > 200 ? "…" : ""),
+    draft: String(page.draft),
+    description: page.description ?? "",
+    created_at: new Date(page.createdAt * 1000).toISOString(),
+    updated_at: new Date(page.updatedAt * 1000).toISOString(),
+    html: page.html ? (page.html.slice(0, 200) + (page.html.length > 200 ? "…" : "")) : "",
   });
 }
 
@@ -117,7 +128,7 @@ async function pagesCreate(client: ApiClient, args: string[]): Promise<void> {
   if (typeof flags["description"] === "string") body["description"] = flags["description"];
 
   const page = await client.post<PageDetail>("/api/pages", body);
-  fmt.success(`Created page: ${page.slug} (${page.status})`);
+  fmt.success(`Created page: ${page.slug} (${page.draft ? "draft" : "published"})`);
   if (fmt.isJsonMode()) fmt.detail(page as unknown as Record<string, unknown>);
 }
 
@@ -144,7 +155,7 @@ async function pagesUpdate(client: ApiClient, args: string[]): Promise<void> {
   }
 
   const page = await client.put<PageDetail>(`/api/pages/${slug}`, body);
-  fmt.success(`Updated page: ${page.slug} (${page.status})`);
+  fmt.success(`Updated page: ${page.slug} (${page.draft ? "draft" : "published"})`);
   if (fmt.isJsonMode()) fmt.detail(page as unknown as Record<string, unknown>);
 }
 

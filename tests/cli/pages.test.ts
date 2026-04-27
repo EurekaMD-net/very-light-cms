@@ -31,9 +31,12 @@ function suppressOutput() {
 describe("pages list", () => {
   it("calls GET /api/pages and prints table", async () => {
     const client = makeClient({
-      get: vi.fn().mockResolvedValue([
-        { id: 1, slug: "hello", title: "Hello", status: "published", created_at: 1700000000 },
-      ]),
+      get: vi.fn().mockResolvedValue({
+        items: [
+          { slug: "hello", title: "Hello", description: null, tags: [], createdAt: 1700000000, updatedAt: 1700000000 },
+        ],
+        pagination: { limit: 20, offset: 0, total: 1 },
+      }),
     });
     suppressOutput();
     await pagesCommand(client, ["list"]);
@@ -45,9 +48,9 @@ describe("pages get", () => {
   it("calls GET /api/pages/:slug", async () => {
     const client = makeClient({
       get: vi.fn().mockResolvedValue({
-        id: 1, slug: "hello", title: "Hello", status: "published",
-        content: "body text", description: null,
-        created_at: 1700000000, updated_at: 1700000000,
+        slug: "hello", title: "Hello", draft: false,
+        html: "body text", description: null, tags: [],
+        createdAt: 1700000000, updatedAt: 1700000000,
       }),
     });
     suppressOutput();

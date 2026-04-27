@@ -22,6 +22,11 @@ interface MediaItem {
   uploaded_at: number;
 }
 
+interface MediaListResponse {
+  items: MediaItem[];
+  total: number;
+}
+
 interface MediaUploadResponse {
   id: number;
   filename: string;
@@ -55,8 +60,8 @@ Subcommands:
 }
 
 async function mediaList(client: ApiClient): Promise<void> {
-  const data = await client.get<MediaItem[]>("/api/media");
-  const rows = data.map((m) => ({
+  const { items } = await client.get<MediaListResponse>("/api/media");
+  const rows = items.map((m) => ({
     id: m.id,
     filename: m.filename,
     type: m.mime_type,

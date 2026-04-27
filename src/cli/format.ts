@@ -70,9 +70,14 @@ function error(msg: string): void {
   process.stderr.write(`Error: ${msg}\n`);
 }
 
+/** Print an informational line (suppressed in --json mode). */
+function info(msg: string): void {
+  if (!isJsonMode()) process.stdout.write(msg + "\n");
+}
+
 /** Print usage/help text. */
 function help(text: string): void {
   process.stdout.write(text.trimStart() + "\n");
 }
 
-export const fmt = { table, detail, success, error, help, isJsonMode };
+export const fmt = { table, detail, success, error, info, help, isJsonMode };

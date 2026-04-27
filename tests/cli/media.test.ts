@@ -30,12 +30,15 @@ function suppressOutput() {
 describe("media list", () => {
   it("calls GET /api/media and prints table", async () => {
     const client = makeClient({
-      get: vi.fn().mockResolvedValue([
-        {
-          id: 1, filename: "photo.jpg", mime_type: "image/jpeg",
-          size_bytes: 102400, alt_text: "A photo", uploaded_at: 1700000000,
-        },
-      ]),
+      get: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: 1, filename: "photo.jpg", mime_type: "image/jpeg",
+            size_bytes: 102400, alt_text: "A photo", uploaded_at: 1700000000,
+          },
+        ],
+        total: 1,
+      }),
     });
     suppressOutput();
     await mediaCommand(client, ["list"]);
