@@ -9,8 +9,7 @@ import type { ApiClient } from "../client.js";
 import { fmt } from "../format.js";
 
 interface MeResponse {
-  id: number;
-  username: string;
+  userId: string;
   role: string;
 }
 
@@ -27,8 +26,7 @@ Usage: vlcms whoami     Verify token and show current user
 async function whoami(client: ApiClient): Promise<void> {
   const me = await client.get<MeResponse>("/api/auth/me");
   fmt.detail({
-    id: me.id,
-    username: me.username,
+    userId: me.userId,
     role: me.role,
   });
 }

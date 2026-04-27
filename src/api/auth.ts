@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getDatabase } from "../db/database.js";
 import { signToken, verifyToken, verifyPassword } from "../lib/auth.js";
 import { ok, fail } from "../lib/response.js";
+import { apiAuthGuard } from "../admin/middleware.js";
 
 const authRouter = new Hono();
 
@@ -28,7 +29,7 @@ authRouter.post("/login", async (c) => {
   const db = getDatabase();
   const user = db
     .prepare("SELECT id, role, password_hash FROM users WHERE email = ? LIMIT 1")
-    .get(email) as { id: string; role: string; password_hash: string } | undefined;
+    .get(email) as { id: number; role: string; password_hash: string } | undefined;
 
   if (!user) {
     return fail(c, "Invalid credentials", 401);
@@ -39,7 +40,7 @@ authRouter.post("/login", async (c) => {
     return fail(c, "Invalid credentials", 401);
   }
 
-  const token = signToken(user.id, user.role);
+  const token = signToken(String(user.id), user.role);
 
   setCookie(c, "token", token, {
     httpOnly: true,
@@ -62,16 +63,15 @@ authRouter.post("/logout", (c) => {
 
 /**
  * GET /api/auth/me
- * Returns the current user identity from the cookie.
+ * Returns the current user identity.
+ * Accepts Bearer token (CLI) or httpOnly cookie (Admin UI).
  */
-authRouter.get("/me", (c) => {
-  const token = getCookie(c, "token");
-  if (!token) return fail(c, "Not authenticated", 401);
-
-  const payload = verifyToken(token);
-  if (!payload) return fail(c, "Invalid or expired token", 401);
-
-  return ok(c, { userId: payload.userId, role: payload.role });
+authRouter.get("/me", apiAuthGuard, (c) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ctx = c as any;
+  const userId = ctx.get("userId") as string;
+  const role = ctx.get("role") as string;
+  return ok(c, { userId, role });
 });
 
 export { authRouter };

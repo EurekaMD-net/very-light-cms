@@ -149,8 +149,39 @@ describe("GET /api/auth/me", () => {
       headers: { Cookie: `token=${token}` },
     });
     expect(meRes.status).toBe(200);
-    const body = await meRes.json() as { data: { role: string } };
+    const body = await meRes.json() as { data: { userId: string; role: string } };
     expect(body.data.role).toBe("editor");
+    expect(typeof body.data.userId).toBe("string");
+  });
+
+  it("returns userId + role with valid Bearer token", async () => {
+    await seedUser("bearer@test.com", "pass123", "admin");
+    const app = buildApp();
+
+    const loginRes = await app.request("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "bearer@test.com", password: "pass123" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const tokenMatch = cookie.match(/token=([^;]+)/);
+    const bearerToken = tokenMatch?.[1] ?? "";
+
+    const meRes = await app.request("/api/auth/me", {
+      headers: { Authorization: `Bearer ${bearerToken}` },
+    });
+    expect(meRes.status).toBe(200);
+    const body = await meRes.json() as { data: { userId: string; role: string } };
+    expect(body.data.role).toBe("admin");
+    expect(typeof body.data.userId).toBe("string");
+  });
+
+  it("returns 401 for Bearer with invalid token", async () => {
+    const app = buildApp();
+    const res = await app.request("/api/auth/me", {
+      headers: { Authorization: "Bearer invalidtoken" },
+    });
+    expect(res.status).toBe(401);
   });
 });
 
