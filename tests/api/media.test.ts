@@ -236,3 +236,26 @@ describe("LocalDriver delete — path traversal containment", () => {
     await expect(driver.delete("/etc/passwd")).rejects.toThrow();
   });
 });
+
+describe("GET /media/:filename — route-level traversal regression", () => {
+  it("returns 404 (not file contents) for URL-encoded traversal payload", async () => {
+    // Regression test: GET /media/..%2F..%2Fetc%2Fpasswd must return 404.
+    // Hono decodes %2F → / before passing to param(), so filename becomes
+    // "../../etc/passwd". LocalDriver.read() should throw (containment guard),
+    // and the catch block in the route handler should return notFound() → 404.
+    const { LocalDriver } = await import("../../src/lib/storage.js");
+    const app = new Hono();
+    app.get("/media/:filename", async (c) => {
+      const filename = c.req.param("filename");
+      const driver = new LocalDriver(testUploadDir);
+      try {
+        const data = await driver.read(filename);
+        return c.body(new Uint8Array(data), 200, { "Content-Type": "application/octet-stream" });
+      } catch {
+        return c.notFound();
+      }
+    });
+    const res = await app.request("/media/..%2F..%2Fetc%2Fpasswd");
+    expect(res.status).toBe(404);
+  });
+});
