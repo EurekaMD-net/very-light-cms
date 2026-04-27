@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { ApiClient } from "../client.js";
 import { fmt } from "../format.js";
+import { parseFlags } from "../parse-flags.js";
 
 interface MediaItem {
   id: number;
@@ -33,29 +34,7 @@ interface MediaUploadResponse {
   size_bytes: number;
 }
 
-function parseFlags(args: string[]): { flags: Record<string, string | true>; positional: string[] } {
-  const flags: Record<string, string | true> = {};
-  const positional: string[] = [];
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i]!;
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
-        flags[key] = next;
-        i += 2;
-      } else {
-        flags[key] = true;
-        i += 1;
-      }
-    } else {
-      positional.push(arg);
-      i += 1;
-    }
-  }
-  return { flags, positional };
-}
+
 
 export async function mediaCommand(client: ApiClient, args: string[]): Promise<void> {
   const [sub, ...rest] = args;

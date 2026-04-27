@@ -85,6 +85,18 @@ describe("ApiClient.get", () => {
   });
 });
 
+describe("ApiClient.put", () => {
+  it("sends PUT with JSON body and Authorization header", async () => {
+    const spy = mockFetch(200, { slug: "hello", status: "published" });
+    vi.stubGlobal("fetch", spy);
+    await makeClient(TOKEN).put("/api/pages/hello", { title: "Updated" });
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe("PUT");
+    expect(init.body).toBe(JSON.stringify({ title: "Updated" }));
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe(`Bearer ${TOKEN}`);
+  });
+});
+
 describe("ApiClient — 204 No Content", () => {
   it("returns empty object on 204", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({

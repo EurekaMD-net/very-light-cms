@@ -15,6 +15,7 @@ function makeClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     get: vi.fn(),
     post: vi.fn(),
+    put: vi.fn(),
     postForm: vi.fn(),
     delete: vi.fn(),
     ...overrides,

@@ -16,6 +16,7 @@ function makeClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     get: vi.fn(),
     post: vi.fn(),
+    put: vi.fn(),
     postForm: vi.fn(),
     delete: vi.fn(),
     ...overrides,
@@ -107,9 +108,9 @@ describe("pages create", () => {
 });
 
 describe("pages update", () => {
-  it("calls POST /api/pages/:slug with body", async () => {
+  it("calls PUT /api/pages/:slug with body", async () => {
     const client = makeClient({
-      post: vi.fn().mockResolvedValue({
+      put: vi.fn().mockResolvedValue({
         id: 1, slug: "hello", title: "Updated", status: "published",
         content: "", description: null,
         created_at: 1700000000, updated_at: 1700000001,
@@ -117,7 +118,7 @@ describe("pages update", () => {
     });
     suppressOutput();
     await pagesCommand(client, ["update", "hello", "--title", "Updated", "--publish"]);
-    expect(client.post).toHaveBeenCalledWith("/api/pages/hello", expect.objectContaining({
+    expect(client.put).toHaveBeenCalledWith("/api/pages/hello", expect.objectContaining({
       title: "Updated",
       status: "published",
     }));

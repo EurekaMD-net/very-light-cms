@@ -14,6 +14,7 @@
 import { readFile } from "node:fs/promises";
 import type { ApiClient } from "../client.js";
 import { fmt } from "../format.js";
+import { parseFlags } from "../parse-flags.js";
 
 // Shape returned by GET /api/pages
 interface PageListItem {
@@ -34,30 +35,7 @@ interface PagesListResponse {
   pages: PageListItem[];
 }
 
-/** Parse --flag value pairs from an arg array. Returns map + remaining positional args. */
-function parseFlags(args: string[]): { flags: Record<string, string | true>; positional: string[] } {
-  const flags: Record<string, string | true> = {};
-  const positional: string[] = [];
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i]!;
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
-        flags[key] = next;
-        i += 2;
-      } else {
-        flags[key] = true;
-        i += 1;
-      }
-    } else {
-      positional.push(arg);
-      i += 1;
-    }
-  }
-  return { flags, positional };
-}
+
 
 export async function pagesCommand(client: ApiClient, args: string[]): Promise<void> {
   const [sub, ...rest] = args;
@@ -171,7 +149,7 @@ async function pagesUpdate(client: ApiClient, args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const page = await client.post<PageDetail>(`/api/pages/${slug}`, body);
+  const page = await client.put<PageDetail>(`/api/pages/${slug}`, body);
   fmt.success(`Updated page: ${page.slug} (${page.status})`);
   if (fmt.isJsonMode()) fmt.detail(page as unknown as Record<string, unknown>);
 }

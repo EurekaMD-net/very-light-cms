@@ -73,6 +73,15 @@ export class ApiClient {
     return this.unwrap<T>(res);
   }
 
+  async put<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+    return this.unwrap<T>(res);
+  }
+
   async delete<T>(path: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "DELETE",
