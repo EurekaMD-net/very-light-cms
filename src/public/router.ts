@@ -29,7 +29,7 @@ publicRouter.get("/", (c) => {
     slug: r.slug,
     title: r.title,
     description: r.description ?? null,
-    date: r.created_at ? new Date(r.created_at * 1000).toISOString().split("T")[0] : null,
+    date: r.created_at ? formatDate(r.created_at) : null,
     tags: parseTags(r.tags),
   }));
 
@@ -82,9 +82,7 @@ publicRouter.get("/:slug", (c) => {
     const body = pageView({
       title: row.title,
       description: row.description ?? null,
-      date: row.updated_at
-        ? new Date(row.updated_at * 1000).toISOString().split("T")[0]
-        : null,
+      date: row.updated_at ? formatDate(row.updated_at) : null,
       tags: parseTags(row.tags),
       html: node.html,
     });
@@ -117,6 +115,13 @@ interface DbPageRow {
   draft?: number;
   created_at?: number;
   updated_at?: number;
+}
+
+/** Format a Unix timestamp (seconds) as YYYY-MM-DD in America/Mexico_City timezone. */
+function formatDate(unixSec: number): string {
+  return new Date(unixSec * 1000).toLocaleDateString("en-CA", {
+    timeZone: "America/Mexico_City",
+  });
 }
 
 function parseTags(raw?: string | null): string[] {
