@@ -3,13 +3,7 @@
  * No pagination in Phase 4; Phase 5+ can add it.
  */
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import { esc } from "../../../lib/escape.js";
 
 export interface PageListItem {
   slug: string;

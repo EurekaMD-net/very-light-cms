@@ -3,13 +3,7 @@
  * Receives a fully rendered ContentNode and wraps it in the article structure.
  */
 
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import { esc } from "../../../lib/escape.js";
 
 export interface PageViewData {
   title: string;

@@ -1,13 +1,5 @@
 import { css } from "./styles.js";
-
-/** HTML-escape for attribute values and text nodes. */
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import { esc } from "../../../lib/escape.js";
 
 export interface LayoutOptions {
   title: string;
