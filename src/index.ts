@@ -6,6 +6,8 @@ import { pages } from "./api/pages.js";
 import { pagesWrite } from "./api/pages-write.js";
 import { authRouter } from "./api/auth.js";
 import { admin } from "./admin/router.js";
+import { media } from "./api/media.js";
+import { LocalDriver } from "./lib/storage.js";
 import { apiAuthGuard } from "./admin/middleware.js";
 import { publicRouter } from "./public/router.js";
 
@@ -26,6 +28,33 @@ app.get("/health", (c) => c.json({ status: "ok", version: "0.1.0" }));
 // POST /api/auth/logout → clear cookie
 // GET  /api/auth/me     → current user info
 app.route("/api/auth", authRouter);
+
+// ── Media API ─────────────────────────────────────────────────────────────────
+// POST /api/media/upload  → upload file (Bearer required)
+// GET  /api/media         → list media (Bearer required)
+// DELETE /api/media/:id   → delete media (Bearer required)
+app.use("/api/media", apiAuthGuard);
+app.route("/api/media", media);
+
+// ── Serve uploaded files ──────────────────────────────────────────────────────
+// GET /media/:filename — public access (no auth). Serves from UPLOAD_DIR.
+app.get("/media/:filename", async (c) => {
+  const filename = c.req.param("filename");
+  const driver = new LocalDriver(config.uploadDir);
+  try {
+    const data = await driver.read(filename);
+    // Derive content-type from extension — simple map, no dep needed
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    const mime: Record<string, string> = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+      gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+      pdf: "application/pdf",
+    };
+    return c.body(new Uint8Array(data), 200, { "Content-Type": mime[ext] ?? "application/octet-stream" });
+  } catch {
+    return c.notFound();
+  }
+});
 
 // ── API routes ────────────────────────────────────────────────────────────────
 // Public read-only: GET /api/pages, GET /api/pages/:slug

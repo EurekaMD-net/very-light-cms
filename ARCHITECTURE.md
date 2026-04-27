@@ -61,6 +61,7 @@ very-light-cms/
 │   │
 │   ├── api/                   # REST API (headless usage)
 │   │   ├── pages.ts           # GET /api/pages, POST /api/pages, etc.
+│   │   ├── media.ts           # GET /api/media, POST /api/media/upload
 │   │   └── auth.ts            # POST /api/auth/login, POST /logout, GET /me
 │   │
 │   ├── admin/                 # Admin UI (server-rendered)
@@ -68,7 +69,8 @@ very-light-cms/
 │   │   ├── views/             # HTML template strings (or .eta files)
 │   │   │   ├── layout.ts      # Base layout with nav
 │   │   │   ├── pages-list.ts  # Content list view
-│   │   │   └── page-edit.ts   # Markdown editor + frontmatter form
+│   │   │   ├── page-edit.ts   # Markdown editor + frontmatter form
+│   │   │   └── media-list.ts  # Media gallery with upload form + delete
 │   │   └── middleware.ts      # Auth guard for /admin/* routes
 │   │
 │   ├── public/                # Public site renderer (Phase 4)
@@ -83,7 +85,8 @@ very-light-cms/
 │   └── lib/                   # Shared utilities
 │       ├── auth.ts            # JWT sign/verify helpers
 │       ├── slugify.ts         # Title → URL slug
-│       ├── storage.ts         # File I/O abstraction (local + S3-ready)
+│       ├── escape.ts          # HTML entity escaping (single source of truth)
+│       ├── storage.ts         # StorageDriver interface + LocalDriver (write/read/delete/url)
 │       └── errors.ts          # AppError class + HTTP status mapping
 │
 ├── content/                   # Default content directory (git-trackable)
@@ -183,8 +186,10 @@ REST API  Admin UI  Public Site
 | POST   | /api/pages              | Bearer  | Create page               |
 | PUT    | /api/pages/:slug        | Bearer  | Update page               |
 | DELETE | /api/pages/:slug        | Bearer  | Delete (soft) page        |
-| POST   | /api/media/upload       | Bearer  | Upload media file         |
-| GET    | /api/media              | Bearer  | List media                |
+| POST   | /api/media/upload       | Bearer  | Upload media file (10MB max, rasters + PDF only) |
+| GET    | /api/media              | Bearer  | List uploaded media       |
+| DELETE | /api/media/:id          | Bearer  | Delete media by ID        |
+| GET    | /media/:filename        | Public  | Serve uploaded file       |
 | POST   | /api/auth/login         | Public  | Login → JWT               |
 | GET    | /api/auth/me            | Cookie/Bearer | Current authenticated user |
 
@@ -204,11 +209,17 @@ JWT_REFRESH_EXPIRES_IN=7d
 
 # Storage
 CONTENT_DIR=./content         # Directory for .md page files
+UPLOAD_DIR=./uploads          # Directory for uploaded media files
 
 # Database
 DB_PATH=./data/cms.db
-S3_ACCESS_KEY=
-S3_SECRET_KEY=
+
+# Public site
+SITE_TITLE=My Site            # HTML <title> and <h1> on the homepage
+
+# S3 (Phase 6+, not yet implemented)
+# S3_ACCESS_KEY=
+# S3_SECRET_KEY=
 ```
 
 ---
@@ -232,6 +243,12 @@ S3_SECRET_KEY=
 
 If you add a public-facing submission flow (comments, user-generated content), you **must** add sanitization at that boundary — `dompurify` (server-side via jsdom) or a whitelist filter. Do not assume the current architecture handles untrusted input safely.
 
+### SVG uploads — explicitly blocked
+
+`image/svg+xml` is **not** in `ALLOWED_MIME_TYPES` (`src/lib/storage.ts`). SVG is XML that can contain `<script>` tags and event handlers. When served from the same origin, a malicious SVG executes JavaScript under the app's origin — enabling **persistent XSS** and **same-origin cookie theft** (including the admin session JWT). The risk exists even for trusted admins uploading user-supplied assets.
+
+Rasterized formats (JPEG, PNG, GIF, WebP) and PDF are accepted. If SVG support is needed in the future, serve SVG from a separate cookieless origin or run it through a sanitizer (e.g. `svgo` + strip `<script>` / `on*` attributes) before storage.
+
 ---
 
 ## Phase Plan
@@ -243,9 +260,9 @@ If you add a public-facing submission flow (comments, user-generated content), y
 | 2     | REST API (pages read + write, no auth yet)         | ✅ Done  |
 | 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)   | ✅ Done  |
 | 4     | Public site renderer + default theme               | ✅ Done  |
-| 5     | Media upload + storage abstraction                 | Pending  |
+| 5     | Media upload + storage abstraction                 | ✅ Done  |
 | 6     | CLI (vlcms admin commands)                         | Pending  |
 
 ---
 
-*Last updated: 2026-04-27 — Phase 4 complete*
+*Last updated: 2026-04-26 — Phase 5 complete*

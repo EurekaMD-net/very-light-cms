@@ -7,6 +7,8 @@ import { loginView } from "./views/login.js";
 import { pagesListView } from "./views/pages-list.js";
 import { pageEditView } from "./views/page-edit.js";
 import { escHtml } from "./views/layout.js";
+import { mediaListView, mediaUploadView } from "./views/media-list.js";
+import { LocalDriver, ALLOWED_MIME_TYPES, MAX_UPLOAD_BYTES } from "../lib/storage.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -274,6 +276,62 @@ admin.post("/pages/:slug/delete", authGuard, (c) => {
   return c.redirect("/admin");
 });
 
+
+// ── Media ─────────────────────────────────────────────────────────────────────
+
+admin.get("/media", authGuard, (c) => {
+  const db = getDatabase();
+  const driver = new LocalDriver(config.uploadDir);
+  const rows = db
+    .prepare("SELECT id, filename, mime_type, size_bytes, alt_text, uploaded_at FROM media ORDER BY uploaded_at DESC")
+    .all() as Array<{ id: number; filename: string; mime_type: string; size_bytes: number; alt_text: string | null; uploaded_at: number }>;
+  const items = rows.map((r) => ({ ...r, url: driver.url(r.filename) }));
+  return c.html(mediaListView(items, c.req.query("flash")));
+});
+
+admin.get("/media/upload", authGuard, (c) => {
+  return c.html(mediaUploadView());
+});
+
+admin.post("/media/upload", authGuard, async (c) => {
+  const body = await c.req.parseBody();
+  const file = body["file"];
+  const altText = typeof body["alt_text"] === "string" ? body["alt_text"] : null;
+
+  if (!(file instanceof File)) {
+    return c.html(mediaUploadView("Missing file"), 400);
+  }
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    return c.html(mediaUploadView("Unsupported file type: " + file.type), 400);
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return c.html(mediaUploadView("File exceeds 10 MB limit"), 400);
+  }
+
+  const data = Buffer.from(await file.arrayBuffer());
+  const driver = new LocalDriver(config.uploadDir);
+  const stored = await driver.write(file.name, data, file.type);
+
+  const db = getDatabase();
+  db.prepare("INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?)")
+    .run(stored, file.type, file.size, altText);
+
+  return c.redirect("/admin/media?flash=Uploaded+successfully");
+});
+
+admin.post("/media/:id/delete", authGuard, async (c) => {
+  const id = parseInt(c.req.param("id") ?? "", 10);
+  const db = getDatabase();
+  const row = db.prepare("SELECT id, filename FROM media WHERE id = ?")
+    .get(id) as { id: number; filename: string } | undefined;
+  if (!row) return c.redirect("/admin/media?flash=Not+found");
+
+  const driver = new LocalDriver(config.uploadDir);
+  await driver.delete(row.filename);
+  db.prepare("DELETE FROM media WHERE id = ?").run(id);
+
+  return c.redirect("/admin/media?flash=Deleted");
+});
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function buildMarkdown(opts: {

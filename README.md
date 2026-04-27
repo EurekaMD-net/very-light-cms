@@ -28,7 +28,7 @@ A headless CMS engine built on the same principles as VLMP: zero bloat, no magic
 | 2     | REST API (read + write, no auth yet)     | ✅ Done     |
 | 3     | Auth (JWT) + Admin UI (server-rendered)  | ✅ Done     |
 | 4     | Public site renderer + default theme     | ✅ Done     |
-| 5     | Media upload + storage abstraction       | Pending     |
+| 5     | Media upload + storage abstraction       | ✅ Done     |
 | 6     | CLI (vlcms admin commands)               | Pending     |
 
 ---
@@ -61,8 +61,8 @@ node dist/index.js
 
 ```
 src/
-  index.ts            ← Hono app entry, route stubs, server start
-  config.ts           ← ENV vars → typed config object
+  index.ts            ← Hono app entry, all routes wired, server start
+  config.ts           ← ENV vars → typed config object (lazy getters)
   content/
     types.ts          ← FrontMatter, ContentNode interfaces
     parser.ts         ← raw Markdown string → ContentNode
@@ -71,15 +71,28 @@ src/
   db/
     schema.sql        ← DDL: pages, media, users, settings
     database.ts       ← getDatabase() singleton + schema init
+  api/
+    pages.ts          ← REST API: pages CRUD
+    media.ts          ← REST API: media upload + list + delete
+    auth.ts           ← REST API: login / logout / me
+  admin/
+    router.ts         ← Admin UI routes (pages + media)
+    views/            ← Server-rendered HTML templates
+  public/
+    router.ts         ← GET / (homepage) + GET /:slug (single page)
+    themes/minimal/   ← Default theme (layout, home, page, styles)
   lib/
     errors.ts         ← AppError → NotFoundError / ValidationError
     slugify.ts        ← title → URL-safe slug (no deps)
+    escape.ts         ← HTML entity escaping (single source of truth)
+    storage.ts        ← StorageDriver interface + LocalDriver
 content/pages/        ← .md files (git-trackable content)
+uploads/              ← uploaded media files (gitignored)
 data/cms.db           ← SQLite database (gitignored)
 tests/
-  content/
-    parser.test.ts    ← 5 unit tests
-    renderer.test.ts  ← 12 unit tests
+  content/            ← parser + renderer unit tests
+  api/                ← pages, auth, media integration tests (85 total)
+  public/             ← public renderer tests
   fixtures/           ← sample .md files
 ```
 
@@ -111,6 +124,8 @@ PORT=3000
 NODE_ENV=development
 DB_PATH=./data/cms.db
 CONTENT_DIR=./content/pages
+UPLOAD_DIR=./uploads          # where media files are stored
+SITE_TITLE=My Site            # public homepage title
 JWT_SECRET=change_this_in_production
 ```
 
@@ -213,12 +228,38 @@ POST /admin/pages/:slug       → Update page → redirect /admin
 POST /admin/pages/:slug/publish   → Set draft=0 → redirect /admin
 POST /admin/pages/:slug/unpublish → Set draft=1 → redirect /admin
 POST /admin/pages/:slug/delete    → Soft-delete → redirect /admin
+POST /admin/media/upload   → Upload file → redirect /admin/media
+GET  /admin/media          → Media gallery (auth required)
+POST /admin/media/:id/delete → Delete file + DB row → redirect /admin/media
 ```
 
 **First-run setup** — create the admin user before accessing the UI:
 
 ```bash
 ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=secret npm run seed:admin
+```
+
+### Media (JWT required)
+
+```bash
+# List uploaded files
+GET /api/media
+Authorization: Bearer <token>
+
+# Upload a file (multipart/form-data, field name: "file")
+# Max 10MB. Accepted: image/jpeg, image/png, image/gif, image/webp, application/pdf
+# image/svg+xml is explicitly blocked (persistent XSS risk)
+POST /api/media/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+# body: file=<binary>
+
+# Delete a media item by ID (removes file + DB row)
+DELETE /api/media/:id
+Authorization: Bearer <token>
+
+# Serve an uploaded file (public, no auth)
+GET /media/:filename
 ```
 
 ### Health

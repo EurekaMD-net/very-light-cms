@@ -74,12 +74,14 @@ export function sanitizeFilename(filename: string): string {
   return (safeName + safeExt) || "upload";
 }
 
+// SVG intentionally excluded: inline scripts in SVG execute in the browser under the
+// app's origin, enabling persistent XSS and same-origin cookie theft.
+// Accept only rasterized formats + PDF.
 export const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "application/pdf",
 ]);
 
