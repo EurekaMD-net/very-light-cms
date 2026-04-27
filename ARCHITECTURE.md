@@ -224,6 +224,16 @@ S3_SECRET_KEY=
 
 ---
 
+## Security Notes
+
+### Markdown rendering — admin = trusted model
+
+`marked` v15 removed the `sanitize` option. HTML embedded in Markdown (e.g. `<script>alert(1)</script>`) renders as-is. This is intentional: Very Light CMS operates on an **admin = trusted** model. Only authenticated users with a valid JWT can `POST /api/pages` or write via the admin UI. Untrusted user input never reaches the content pipeline.
+
+If you add a public-facing submission flow (comments, user-generated content), you **must** add sanitization at that boundary — `dompurify` (server-side via jsdom) or a whitelist filter. Do not assume the current architecture handles untrusted input safely.
+
+---
+
 ## Phase Plan
 
 | Phase | Scope                                              | Status   |

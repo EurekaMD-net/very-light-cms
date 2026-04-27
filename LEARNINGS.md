@@ -159,3 +159,6 @@ The public router catches `/*` — it MUST be mounted after all other routes (`/
 
 ### CSS as inline `<style>` string
 Zero external dependencies for theming. The CSS string is evaluated once at import time and embedded in every page response. No file serving, no build step, no cache invalidation headaches. Trade-off: no browser CSS caching across pages. Acceptable for Phase 4; a `GET /static/theme.css` route can be added in Phase 5.
+
+### Markdown rendering — admin = trusted, no sanitization needed
+`marked` v15 dropped the `sanitize` option. A Markdown post containing `<script>alert(1)</script>` will render the tag as-is. This is a deliberate design decision: only authenticated admins can write content, so the trust boundary is enforced at the auth layer, not the render layer. If a public-facing submission flow is ever added (comments, user forms), sanitization must be applied at that boundary before content reaches the renderer. `dompurify` (server-side via jsdom) is the reference implementation.
