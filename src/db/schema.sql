@@ -53,3 +53,20 @@ CREATE TABLE IF NOT EXISTS settings (
   value       TEXT    NOT NULL,
   updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- ── Auth log ──────────────────────────────────────────────────────────────────
+-- Audit trail of every authentication attempt (admin + API).
+-- success=0 rows are the bruteforce surface; consult ip + recent count to
+-- decide on additional response (e.g. tighter rate-limit for repeat IPs).
+CREATE TABLE IF NOT EXISTS auth_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  email       TEXT,                          -- email attempted (may not exist in users)
+  ip          TEXT,                          -- client IP (best-effort, may be "unknown")
+  success     INTEGER NOT NULL,              -- 1 = login succeeded, 0 = failed
+  reason      TEXT,                          -- 'invalid_credentials' | 'rate_limited' | 'ok' | …
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_log_ip      ON auth_log(ip);
+CREATE INDEX IF NOT EXISTS idx_auth_log_email   ON auth_log(email);
+CREATE INDEX IF NOT EXISTS idx_auth_log_created ON auth_log(created_at DESC);

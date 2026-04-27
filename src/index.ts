@@ -25,7 +25,26 @@ app.onError((err, c) => {
 });
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/health", (c) => c.json({ status: "ok", version: "0.1.0" }));
+// Health check — runs SELECT 1 to confirm DB connectivity. Returns 503 if the
+// DB is unreachable (e.g. mid-restart, file lock, schema corruption).
+app.get("/health", (c) => {
+  try {
+    const row = getDatabase().prepare("SELECT 1 as ok").get() as
+      | { ok: number }
+      | undefined;
+    if (!row || row.ok !== 1) throw new Error("unexpected response");
+    return c.json({ status: "ok", db: "ok", version: "0.1.0" });
+  } catch (err) {
+    return c.json(
+      {
+        status: "degraded",
+        db: "unavailable",
+        error: err instanceof Error ? err.message : String(err),
+      },
+      503,
+    );
+  }
+});
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
 // POST /api/auth/login  → issue JWT cookie

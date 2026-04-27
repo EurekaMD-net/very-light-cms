@@ -16,6 +16,7 @@ import {
 import { authCookieOptions } from "../lib/cookie.js";
 import { rateLimit } from "../lib/rate-limit.js";
 import { detectMimeMatches } from "../lib/mime-sniff.js";
+import { recordAuthAttempt } from "../lib/auth-log.js";
 import { slugify } from "../lib/slugify.js";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -30,13 +31,19 @@ export const admin = new Hono();
 const adminLoginRateLimit = rateLimit({
   max: 5,
   windowMs: 15 * 60 * 1000,
-  onLimit: (c, retryAfterSec) =>
-    c.html(
+  onLimit: (c, retryAfterSec) => {
+    recordAuthAttempt(c, {
+      email: null,
+      success: false,
+      reason: "rate_limited",
+    });
+    return c.html(
       loginView({
         error: `Too many attempts. Try again in ${retryAfterSec}s.`,
       }),
       429,
-    ),
+    );
+  },
 });
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
@@ -56,6 +63,11 @@ admin.post("/login", adminLoginRateLimit, async (c) => {
   const password = String(body["password"] ?? "");
 
   if (!email || !password) {
+    recordAuthAttempt(c, {
+      email: email || null,
+      success: false,
+      reason: "validation",
+    });
     return c.html(
       loginView({ error: "Email and password are required." }),
       400,
@@ -76,6 +88,11 @@ admin.post("/login", adminLoginRateLimit, async (c) => {
     : false;
 
   if (!valid) {
+    recordAuthAttempt(c, {
+      email,
+      success: false,
+      reason: "invalid_credentials",
+    });
     return c.html(loginView({ error: "Invalid email or password." }), 401);
   }
 
@@ -87,6 +104,7 @@ admin.post("/login", adminLoginRateLimit, async (c) => {
   const token = signToken(String(user!.id), user!.role);
   setCookie(c, "token", token, authCookieOptions());
 
+  recordAuthAttempt(c, { email, success: true, reason: "ok" });
   return c.redirect("/admin");
 });
 

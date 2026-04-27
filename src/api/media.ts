@@ -81,12 +81,28 @@ media.post("/upload", async (c) => {
   const driver = new LocalDriver(config.uploadDir);
   const stored = await driver.write(file.name, data, file.type);
 
+  // File is now on disk. If the DB insert fails (UNIQUE collision on the
+  // millisecond-prefixed filename, schema constraint, etc.), the file would
+  // be orphaned. Roll back by unlinking before propagating.
   const db = getDatabase();
-  const result = db
-    .prepare(
-      "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?) RETURNING id, filename, mime_type, size_bytes, alt_text, uploaded_at",
-    )
-    .get(stored, file.type, file.size, altText) as MediaRow;
+  let result: MediaRow;
+  try {
+    result = db
+      .prepare(
+        "INSERT INTO media (filename, mime_type, size_bytes, alt_text) VALUES (?, ?, ?, ?) RETURNING id, filename, mime_type, size_bytes, alt_text, uploaded_at",
+      )
+      .get(stored, file.type, file.size, altText) as MediaRow;
+  } catch (err) {
+    await driver.delete(stored).catch(() => {
+      /* best-effort — file is already orphaned, log but don't mask the original error */
+    });
+    return fail(
+      c,
+      "Failed to record upload: " +
+        (err instanceof Error ? err.message : String(err)),
+      500,
+    );
+  }
 
   return ok(c, { ...result, url: driver.url(result.filename) }, 201);
 });
