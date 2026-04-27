@@ -188,3 +188,20 @@ Applying app.use("/api/media", apiAuthGuard) at the mount site only guards the e
 
 ### .. in filename not eliminated by slash-to-underscore substitution
 replace(/[\/\\]/g, "_") converts slashes but leaves .. intact -- ../evil.png becomes .._evil.png, still a traversal risk if the containment check is ever missed. Added replace(/\.{2,}/g, "_") to remove consecutive dots. Belt-and-suspenders: sanitize on write AND contain on read/delete.
+
+## Phase 6 — CLI
+
+- **CLI = HTTP client, not module importer**: The CLI talks to the server via fetch exclusively. It never imports server or DB code. This keeps the binary portable (point at any URL) and prevents the CLI from becoming a hidden second entry point to the storage layer.
+
+- **`process.argv` at module load for `--json`**: `jsonMode` is evaluated once at import time, not per-call. This is intentional — JSON mode is a global session flag, not per-function. Side effect: tests that import `format.ts` share the module-level value; since tests don't include `--json` in argv, non-JSON path is always tested.
+
+- **`parseFlags` duplicated in pages.ts and media.ts**: Both commands implement the same 20-line flag parser locally. This is intentional duplication — commands are self-contained. If a third command needs it, extract to `src/cli/flags.ts`. YAGNI prevents premature extraction.
+
+- **`postForm` omits Content-Type header**: When sending `FormData`, `fetch` must set the `multipart/form-data` boundary itself. Passing a `Content-Type: application/json` header breaks multipart parsing. The client correctly omits `Content-Type` for `postForm` only.
+
+- **`formatBytes` local to media.ts**: Not worth extracting — only used for one column in one command. If a second command needs it, move to `format.ts`.
+
+- **Mock `process.exit` with `mockImplementation(() => { throw ... })`**: Tests that call code invoking `process.exit(1)` must throw to stop execution. Using `vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit") })` lets the test catch the throw and assert the exit code was 1.
+
+- **`bin` entry in package.json + `chmod +x`**: The shebang `#!/usr/bin/env node` in `dist/cli/index.js` requires the file to be executable. `npm run build:cli` adds `chmod +x dist/cli/index.js` after `tsc`. Without this, `npx vlcms` fails with EACCES on Linux.
+

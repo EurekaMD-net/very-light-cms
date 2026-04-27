@@ -235,6 +235,60 @@ SITE_TITLE=My Site            # HTML <title> and <h1> on the homepage
 
 ---
 
+
+## CLI (vlcms)
+
+The `vlcms` binary is a thin HTTP client over the REST API. It does NOT import server code — it
+communicates exclusively via fetch. Config is injected via environment variables:
+
+| Env var      | Default               | Purpose                              |
+|--------------|-----------------------|--------------------------------------|
+| `VLCMS_URL`  | `http://localhost:3000` | Base URL of the running CMS server |
+| `VLCMS_TOKEN`| (none)                | JWT from `POST /api/auth/login`      |
+
+### Commands
+
+```
+vlcms pages list
+vlcms pages get <slug>
+vlcms pages create --title T [--file F] [--description D] [--publish]
+vlcms pages update <slug> [--title T] [--file F] [--description D] [--publish] [--draft]
+vlcms pages delete <slug>
+vlcms media list
+vlcms media upload <file> [--alt T]
+vlcms media delete <id>
+vlcms whoami
+```
+
+All commands accept `--json` for machine-readable output (piping to `jq`, etc.).
+
+### Source layout
+
+```
+src/cli/
+  index.ts            Entry point — dispatch by entity (pages/media/whoami)
+  client.ts           ApiClient — fetch wrapper, auth header, ApiError
+  format.ts           fmt.table / fmt.detail / fmt.success / fmt.error
+  commands/
+    pages.ts          pages subcommands
+    media.ts          media subcommands
+    auth.ts           whoami
+```
+
+### Running
+
+```bash
+# Dev (no build needed)
+VLCMS_URL=http://localhost:3000 VLCMS_TOKEN=<jwt> npx tsx src/cli/index.ts pages list
+
+# After build
+npm run build
+VLCMS_URL=http://localhost:3000 VLCMS_TOKEN=<jwt> node dist/cli/index.js pages list
+
+# After npm link / npm install -g
+vlcms pages list
+```
+
 ## Security Notes
 
 ### Markdown rendering — admin = trusted model
@@ -261,7 +315,7 @@ Rasterized formats (JPEG, PNG, GIF, WebP) and PDF are accepted. If SVG support i
 | 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)   | ✅ Done  |
 | 4     | Public site renderer + default theme               | ✅ Done  |
 | 5     | Media upload + storage abstraction                 | ✅ Done  |
-| 6     | CLI (vlcms admin commands)                         | Pending  |
+| 6     | CLI (vlcms admin commands)                         | ✅ Done  |
 
 ---
 

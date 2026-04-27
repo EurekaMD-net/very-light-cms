@@ -285,3 +285,37 @@ GET /health
 ## License
 
 MIT — EurekaMD-net / Very Light project family.
+
+## CLI (`vlcms`)
+
+Manage your CMS from the terminal:
+
+```bash
+# Set env vars
+export VLCMS_URL=http://localhost:3000
+export VLCMS_TOKEN=<jwt-from-login>
+
+# Pages
+vlcms pages list
+vlcms pages get my-slug
+vlcms pages create --title "Hello" --file content.md --publish
+vlcms pages update my-slug --title "Updated" --draft
+vlcms pages delete my-slug
+
+# Media
+vlcms media list
+vlcms media upload photo.jpg --alt "A photo"
+vlcms media delete 5
+
+# Auth
+vlcms whoami
+
+# JSON output (for piping)
+vlcms pages list --json | jq '.[].slug'
+```
+
+**Run without installing:**
+```bash
+VLCMS_TOKEN=<jwt> npx tsx src/cli/index.ts pages list
+```
+
