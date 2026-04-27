@@ -376,3 +376,25 @@ Cache-Control: no-store        (auth endpoints only)
 ---
 
 _Last updated: 2026-04-27 — Hardening pass complete_
+
+---
+
+## Multi-repo deployment (added 2026-04-27)
+
+A production deployment of vlcms reads editorial content from a **separate repo**, not from this engine repo. The engine repo holds engine code + generic seed only (`about.md`, `getting-started.md`).
+
+**Reference deployment — thewilliamsradar.com**:
+
+| Concern | Repo | VPS path |
+| --- | --- | --- |
+| CMS engine | `EurekaMD-net/very-light-cms` | `/root/claude/very-light-cms` |
+| Editorial content (journal posts + uploads) | `EurekaMD-net/thewilliamsradar-journal` | `/root/claude/thewilliamsradar-journal` |
+
+The engine's `.env` repoints `CONTENT_DIR` and `UPLOAD_DIR` at the journal clone:
+
+```
+CONTENT_DIR=/root/claude/thewilliamsradar-journal/pages
+UPLOAD_DIR=/root/claude/thewilliamsradar-journal/uploads
+```
+
+Every editorial publish = `git add pages/wXX-YYYY.md && git commit && git push` in the **journal repo**, never in the engine repo. Engine clones can be deployed for any number of sites by pointing each at its own content repo.
