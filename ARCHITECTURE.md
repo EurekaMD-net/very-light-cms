@@ -62,7 +62,7 @@ very-light-cms/
 │   ├── api/                   # REST API (headless usage)
 │   │   ├── pages.ts           # GET /api/pages, POST /api/pages, etc.
 │   │   ├── media.ts           # GET /api/media, POST /api/media/upload
-│   │   └── auth.ts            # POST /api/auth/login, /refresh
+│   │   └── auth.ts            # POST /api/auth/login, POST /logout, GET /me
 │   │
 │   ├── admin/                 # Admin UI (server-rendered)
 │   │   ├── router.ts          # Admin route definitions
@@ -181,12 +181,12 @@ REST API  Admin UI  Public Site
 | GET    | /api/pages              | Bearer  | List all pages            |
 | GET    | /api/pages/:slug        | Bearer  | Get single page           |
 | POST   | /api/pages              | Bearer  | Create page               |
-| PATCH  | /api/pages/:slug        | Bearer  | Update page               |
+| PUT    | /api/pages/:slug        | Bearer  | Update page               |
 | DELETE | /api/pages/:slug        | Bearer  | Delete (soft) page        |
 | POST   | /api/media/upload       | Bearer  | Upload media file         |
 | GET    | /api/media              | Bearer  | List media                |
 | POST   | /api/auth/login         | Public  | Login → JWT               |
-| POST   | /api/auth/refresh       | Refresh | Refresh access token      |
+| GET    | /api/auth/me            | Cookie/Bearer | Current authenticated user |
 
 ---
 
@@ -232,16 +232,15 @@ S3_SECRET_KEY=
 
 ## Phase Plan
 
-| Phase | Scope                                              | Status  |
-|-------|----------------------------------------------------|---------|
-| 0     | Repo init, ARCHITECTURE.md, base scaffolding       | Done    |
-| 1     | Content engine (parser + renderer), SQLite schema  | Done    |
+| Phase | Scope                                              | Status   |
+|-------|----------------------------------------------------|-----------| 
+| 0     | Repo init, ARCHITECTURE.md, base scaffolding       | ✅ Done  |
+| 1     | Content engine (parser + renderer), SQLite schema  | ✅ Done  |
 | 2     | REST API (pages read + write, no auth yet)         | ✅ Done  |
 | 3     | Auth (JWT + bcrypt) + Admin UI (server-rendered)   | ✅ Done  |
-| 3     | Admin UI (list, edit, publish)                     | Pending |
-| 4     | Public site renderer + default theme               | Pending |
-| 5     | Media upload + storage abstraction                 | Pending |
-| 6     | CLI (vlcms admin commands)                         | Pending |
+| 4     | Public site renderer + default theme               | Pending  |
+| 5     | Media upload + storage abstraction                 | Pending  |
+| 6     | CLI (vlcms admin commands)                         | Pending  |
 
 ---
 
