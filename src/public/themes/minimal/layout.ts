@@ -36,7 +36,9 @@ export function layout({ title, body, description, etag }: LayoutOptions): strin
 <body>
   <header class="site-header">
     <div class="site-header__inner">
-      <a href="/" class="site-header__title">${esc(siteTitle)}</a>
+      <a href="/" class="site-header__logo">
+        <img src="/assets/logo.png" alt="${esc(siteTitle)}" class="site-header__logo-img">
+      </a>
     </div>
   </header>
   <main>
