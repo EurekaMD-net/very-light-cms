@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { join, basename } from "node:path";
 import { getDatabase } from "../db/database.js";
 import { resolveSlug } from "../content/resolver.js";
 import { parse } from "../content/parser.js";
@@ -8,8 +9,42 @@ import { layout } from "./themes/minimal/layout.js";
 import { pageView, notFoundView } from "./themes/minimal/page.js";
 import { homeView } from "./themes/minimal/home.js";
 import type { PageListItem } from "./themes/minimal/home.js";
+import { config } from "../config.js";
 
 export const publicRouter = new Hono();
+
+// ── Static assets: GET /assets/:filename ───────────────────────────────────────
+// Serves files from the {CONTENT_DIR}/../assets/ directory.
+// Supports images used by the theme (logo, etc.). No auth required.
+// Only allows safe filenames (no path traversal).
+publicRouter.get("/assets/:filename", (c) => {
+  const filename = basename(c.req.param("filename")); // strip any path traversal
+  // Derive assets dir from CONTENT_DIR (e.g. /pages/../assets = /assets)
+  const contentDir = config.contentDir;
+  const assetsDir = join(contentDir, "..", "assets");
+  const filePath = join(assetsDir, filename);
+
+  if (!existsSync(filePath)) {
+    return c.notFound();
+  }
+
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const mime: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    ico: "image/x-icon",
+  };
+
+  const data = readFileSync(filePath);
+  return c.body(new Uint8Array(data), 200, {
+    "Content-Type": mime[ext] ?? "application/octet-stream",
+    "Cache-Control": "public, max-age=3600",
+  });
+});
 
 // ── Homepage: GET / ────────────────────────────────────────────────────────────
 // Lists all published pages (draft=0), ordered by created_at DESC.

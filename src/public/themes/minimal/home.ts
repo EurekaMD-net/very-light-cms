@@ -40,7 +40,7 @@ export function homeView(pages: PageListItem[]): string {
     })
     .join("\n");
 
-  return `<h1>Pages</h1>
+  return `<h1>Journal Entries</h1>
 <ul class="page-list">
   ${items}
 </ul>`;
