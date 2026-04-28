@@ -73,6 +73,27 @@ node dist/index.js
 
 ---
 
+## Admin Console (`vlcms-ctl`)
+
+For deploys against the production VPS service, use the wrapper at the
+repo root. It builds, restarts under systemd, and verifies the new PID
+binds the port — preventing the manual-`node`-spawn zombies that escape
+systemd's view.
+
+```bash
+./vlcms-ctl status         # systemd state, :3344 listener, orphans, local+public health
+./vlcms-ctl deploy         # npm run build + systemctl restart + verify  ← USE THIS after edits
+./vlcms-ctl restart        # systemctl restart only (no rebuild)
+./vlcms-ctl reap           # kill orphan node procs whose cwd is this repo but aren't the systemd PID
+./vlcms-ctl logs [N]       # last N journal lines
+./vlcms-ctl tail           # journalctl -f
+```
+
+**Do NOT** `node dist/index.js &` manually — it escapes systemd, holds
+the port, and confuses subsequent `systemctl restart` attempts.
+
+---
+
 ## Directory Structure
 
 ```

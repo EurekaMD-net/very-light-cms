@@ -1,0 +1,179 @@
+#!/bin/bash
+# vlcms-ctl — Management console for very-light-cms (The Williams Radar Journal)
+#
+# Same family as crm-ctl and mc-ctl. Wraps systemctl/build/curl so that
+# Jarvis (and humans) can deploy and verify without spawning manual
+# `node dist/index.js &` zombies that escape systemd's view.
+#
+# Use `vlcms-ctl deploy` after editing src/ or content/ — it builds and
+# restarts under systemd, then verifies the port is bound by the new PID.
+
+set -euo pipefail
+
+PROJECT_DIR="/root/claude/very-light-cms"
+SERVICE_NAME="very-light-cms"
+PORT=3344
+PUBLIC_URL="https://thewilliamsradar.com"
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+die() { echo -e "${RED}[vlcms-ctl] $*${NC}" >&2; exit 1; }
+ok()  { echo -e "${GREEN}[vlcms-ctl] $*${NC}"; }
+warn(){ echo -e "${YELLOW}[vlcms-ctl] $*${NC}"; }
+
+cmd_status() {
+  echo -e "${CYAN}=== systemd ===${NC}"
+  systemctl status "$SERVICE_NAME" --no-pager | head -10 || true
+  echo
+  echo -e "${CYAN}=== port :$PORT ===${NC}"
+  local listener
+  listener=$(ss -ltnp 2>/dev/null | grep ":$PORT" || true)
+  if [ -z "$listener" ]; then
+    warn "no listener on :$PORT"
+  else
+    echo "$listener"
+  fi
+  echo
+  echo -e "${CYAN}=== orphans (manual node spawns outside systemd) ===${NC}"
+  local svc_pid
+  svc_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+  # Match only node procs whose cwd is this project directory; otherwise
+  # we false-positive on mission-control (also runs `node dist/index.js`)
+  # and on Docker containers running `node dist/server/server.js`.
+  local candidates
+  candidates=$(pgrep -f "node dist/" 2>/dev/null | grep -v "^${svc_pid}$" || true)
+  local orphans=""
+  for p in $candidates; do
+    local cwd
+    cwd=$(readlink "/proc/$p/cwd" 2>/dev/null || echo "")
+    if [ "$cwd" = "$PROJECT_DIR" ]; then
+      orphans="$orphans $p"
+    fi
+  done
+  orphans=$(echo "$orphans" | tr ' ' '\n' | grep -v '^$' || true)
+  if [ -n "$orphans" ]; then
+    warn "found orphan node processes (NOT under systemd):"
+    for p in $orphans; do
+      ps -p "$p" -o pid,etime,cmd 2>/dev/null | tail -1
+    done
+    warn "run \`vlcms-ctl reap\` to clean them up"
+  else
+    ok "no orphans"
+  fi
+  echo
+  echo -e "${CYAN}=== health ===${NC}"
+  local code
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 "http://localhost:$PORT/" || echo "ERR")
+  echo "local  http://localhost:$PORT/  → $code"
+  code=$(curl -sS -o /dev/null -w "%{http_code}" -m 8 "$PUBLIC_URL/" || echo "ERR")
+  echo "public $PUBLIC_URL/             → $code"
+}
+
+cmd_build() {
+  echo -e "${CYAN}=== build ===${NC}"
+  cd "$PROJECT_DIR"
+  npm run build
+  ok "build complete"
+}
+
+cmd_restart() {
+  local old_pid
+  old_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+  echo -e "${CYAN}=== restarting ${SERVICE_NAME} (was PID ${old_pid}) ===${NC}"
+  systemctl restart "$SERVICE_NAME"
+  # Wait briefly for the new PID to bind the port
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.5
+    local new_pid
+    new_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+    if [ "$new_pid" != "$old_pid" ] && [ "$new_pid" != "0" ]; then
+      if ss -ltnp 2>/dev/null | grep -q ":$PORT"; then
+        ok "active on PID $new_pid, :$PORT bound"
+        return 0
+      fi
+    fi
+  done
+  die "restart did not produce a new bound listener within 5s — check \`vlcms-ctl logs\`"
+}
+
+cmd_deploy() {
+  cmd_build
+  cmd_restart
+  echo
+  cmd_status
+}
+
+cmd_reap() {
+  local svc_pid
+  svc_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null || echo 0)
+  # Match only node procs whose cwd is this project directory; otherwise
+  # we false-positive on mission-control (also runs `node dist/index.js`)
+  # and on Docker containers running `node dist/server/server.js`.
+  local candidates
+  candidates=$(pgrep -f "node dist/" 2>/dev/null | grep -v "^${svc_pid}$" || true)
+  local orphans=""
+  for p in $candidates; do
+    local cwd
+    cwd=$(readlink "/proc/$p/cwd" 2>/dev/null || echo "")
+    if [ "$cwd" = "$PROJECT_DIR" ]; then
+      orphans="$orphans $p"
+    fi
+  done
+  orphans=$(echo "$orphans" | tr ' ' '\n' | grep -v '^$' || true)
+  if [ -z "$orphans" ]; then
+    ok "no orphans to reap"
+    return 0
+  fi
+  for p in $orphans; do
+    warn "killing orphan PID $p"
+    kill "$p" 2>/dev/null || true
+  done
+  sleep 1
+  cmd_status
+}
+
+cmd_logs() {
+  local n="${1:-50}"
+  journalctl -u "$SERVICE_NAME" --no-pager -n "$n"
+}
+
+cmd_tail() {
+  journalctl -u "$SERVICE_NAME" -f
+}
+
+cmd_help() {
+  cat <<'EOF'
+vlcms-ctl — very-light-cms admin console
+
+Usage:
+  vlcms-ctl status         systemd state, port :3344 listener, orphans, local+public health
+  vlcms-ctl deploy         npm run build + systemctl restart + verify (USE THIS after edits)
+  vlcms-ctl restart        systemctl restart + verify port bound by new PID
+  vlcms-ctl build          npm run build only (no restart)
+  vlcms-ctl reap           kill any node processes serving dist/ that escaped systemd
+  vlcms-ctl logs [N]       journalctl last N lines (default 50)
+  vlcms-ctl tail           journalctl -f
+
+Notes:
+  - Always use `deploy` after editing src/ or content/. Do NOT spawn
+    `node dist/index.js &` manually — it escapes systemd and accumulates.
+  - If port :3344 is held by an orphan and systemctl restart fails to
+    bind, run `vlcms-ctl reap` then `vlcms-ctl restart`.
+EOF
+}
+
+case "${1:-help}" in
+  status)  cmd_status ;;
+  build)   cmd_build ;;
+  restart) cmd_restart ;;
+  deploy)  cmd_deploy ;;
+  reap)    cmd_reap ;;
+  logs)    shift; cmd_logs "${1:-50}" ;;
+  tail)    cmd_tail ;;
+  help|-h|--help) cmd_help ;;
+  *) die "unknown command: $1 (try \`vlcms-ctl help\`)" ;;
+esac
