@@ -120,29 +120,19 @@ hr { border: none; border-top: 1px solid var(--color-border); margin: 2rem 0; }
 }
 @media (max-width: 900px) { .home-layout { grid-template-columns: 180px 1fr; gap: 2rem; } }
 @media (max-width: 600px) {
-  .home-layout { grid-template-columns: 1fr; }
+  .home-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
   .home-sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    position: static;
     background: var(--color-bg);
-    padding-top: 1rem;
-    padding-bottom: 2rem;
+    padding-bottom: 1rem;
     border-bottom: 2px solid var(--color-border);
   }
-  .home-sidebar::after {
-    content: "";
-    display: block;
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: -60px;
-    height: 60px;
-    background: linear-gradient(to bottom, var(--color-bg) 60%, transparent 100%);
-    pointer-events: none;
-    z-index: 20;
-  }
-  .home-sidebar .entry-list--mobile-only .entry-card:not(:first-child) { display: none; }
+  .home-sidebar::after { display: none; }
+  .home-sidebar .entry-list .entry-card:not(:first-child) { display: none; }
 }
 
 /* Sidebar — entry list, left column */
@@ -156,10 +146,23 @@ hr { border: none; border-top: 1px solid var(--color-border); margin: 2rem 0; }
 .home-sidebar .article-description { font-size: 0.7rem; }
 .home-sidebar .article-meta { font-size: 0.68rem; }
 
+/* Right-column wrapper — stacks editors-note + static-pages-nav */
+.home-main { display: flex; flex-direction: column; gap: 2rem; }
+
 /* Editors' note — permanent home section */
 .editors-note { border: 1px solid var(--color-border); border-radius: 6px; padding: 2rem; background: #0a1622; }
 .editors-note__title { color: #1A6B5A; font-size: 1.68rem; margin: 0 0 1.25rem; }
 .editors-note__body p { color: #ffffff; margin: 0 0 1rem; font-size: 1.14rem; line-height: 1.75; }
 .editors-note__body p:last-child { margin-bottom: 0; }
 .editors-note__signature { color: var(--color-muted); font-style: italic; }
+
+/* Static pages nav — About / Methodology cards below editors note */
+.static-pages-nav { margin: 0; }
+.static-pages-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.static-page-card { }
+.static-page-card__link { display: block; padding: 1.25rem 1.5rem; border: 1px solid var(--color-border); border-radius: 6px; background: #0a1622; text-decoration: none; transition: border-color 0.15s, background 0.15s; }
+.static-page-card__link:hover { border-color: var(--color-accent); background: #0d1e30; }
+.static-page-card__title { display: block; font-size: 1rem; font-weight: 700; color: #1A6B5A; margin-bottom: 0.35rem; }
+.static-page-card__link:hover .static-page-card__title { color: var(--color-accent); }
+.static-page-card__desc { display: block; font-size: 0.82rem; color: var(--color-muted); line-height: 1.5; }
 `;
