@@ -84,6 +84,26 @@ if (!existsSync(mdPath)) {
   die(`content file not found: ${mdPath} (write the page first, then publish)`);
 }
 
+// ---- fact-check gate (poka-yoke) ------------------------------------------
+// Cross-check the analyst prose against the scan CSV before anything is
+// published. Blocks on HARD discrepancies (fabricated tickers, wrong
+// percentiles, signal/pre-radar or AC-direction contradictions). 2026-06-06:
+// the commentary shipped with CAG mislabeled pre-radar and TMUS's AC inverted;
+// this gate makes accuracy enforced, not a reactive correction loop.
+const skipVerify = rawArgs.includes("--skip-verify");
+const verifier = join(REPO_ROOT, "scripts", "verify-commentary.mjs");
+if (!skipVerify && existsSync(verifier)) {
+  try {
+    process.stdout.write(execFileSync("node", [verifier, slug], { encoding: "utf-8" }));
+  } catch (err) {
+    if (err.stdout) process.stdout.write(err.stdout);
+    die(
+      `commentary fact-check FAILED — fix the discrepancies above and re-run. ` +
+        `The page was NOT published. (Override with --skip-verify only if you are certain the prose is correct.)`,
+    );
+  }
+}
+
 // ---- parse frontmatter ----------------------------------------------------
 const raw = readFileSync(mdPath, "utf-8");
 const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
