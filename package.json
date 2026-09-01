@@ -34,5 +34,9 @@
   },
   "bin": {
     "vlcms": "./dist/cli/index.js"
+  },
+  "allowScripts": {
+    "better-sqlite3": true,
+    "esbuild": true
   }
 }
