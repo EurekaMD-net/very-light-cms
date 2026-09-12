@@ -92,6 +92,14 @@ if (!existsSync(mdPath)) {
 // this gate makes accuracy enforced, not a reactive correction loop.
 const skipVerify = rawArgs.includes("--skip-verify");
 const verifier = join(REPO_ROOT, "scripts", "verify-commentary.mjs");
+if (skipVerify) {
+  // The override is an operator decision, never the author's (W37 2026-09-12:
+  // the analyst skipped the gate on its own judgement). Make it visible in the
+  // console AND in the git history.
+  console.warn(
+    "[verify] ⚠ --skip-verify: commentary fact-check BYPASSED. Requires explicit operator approval; the commit records the bypass.",
+  );
+}
 if (!skipVerify && existsSync(verifier)) {
   try {
     process.stdout.write(execFileSync("node", [verifier, slug], { encoding: "utf-8" }));
@@ -206,9 +214,17 @@ try {
 if (!staged) {
   console.log(`[git] no changes to ${relPath} — nothing to commit`);
 } else {
-  const msg =
+  const baseMsg =
     commitMessage ||
     `publish ${slug} — Williams Journal\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`;
+  // The trailer must form a trailer block: inside the trailing paragraph when
+  // that paragraph is already trailers (default message), as its own
+  // paragraph otherwise (operator-supplied message).
+  const lastPara = baseMsg.split(/\n\s*\n/).pop() ?? "";
+  const lastIsTrailers = /^([A-Za-z-]+: .*\n?)+$/.test(lastPara);
+  const msg = skipVerify
+    ? `${baseMsg}${lastIsTrailers ? "\n" : "\n\n"}Verify-Gate: SKIPPED (--skip-verify)`
+    : baseMsg;
   git("commit", "-m", msg, "--", relPath);
   const sha = git("rev-parse", "--short", "HEAD");
   console.log(`[git] committed ${relPath} (${sha})`);

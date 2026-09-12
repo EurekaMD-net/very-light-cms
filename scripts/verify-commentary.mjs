@@ -127,12 +127,46 @@ const tickersIn = (s) => {
 };
 
 // ---- Check 1: fabricated tickers (named in prose, not in scan) --------------
-const mentioned = new Set();
-for (const t of tickersIn(prose)) mentioned.add(t);
-for (const t of mentioned) {
-  if (!facts.has(t)) {
-    add("HARD", `fabricated/unknown ticker "${t}" — named in the commentary but not in ${csvName}`);
+// An uppercase token the scan does not know is HARD only when the sentence
+// presents it as a ticker (signal code, percentile, sector/ticker wording,
+// scorecard vocabulary). Elsewhere it is SOFT: domain acronyms such as
+// PD-1, VEGF, PFS, NSCLC, FDA or EU in a biotech deep dive are not
+// fabricated tickers, and a deny-list of acronyms never converges — the W37
+// gate was bypassed with --skip-verify over six such false positives.
+// Ticker context = a signal code, a percentile, a sector code, or the token
+// itself written as a symbol (**BOLD**, $CASH-tag, "· XBI ·" header). Plain
+// prose words such as "signal", "sector" or "holding" are NOT context — the
+// Journal uses them in ordinary sentences next to acronyms.
+const TICKER_CONTEXT_RE =
+  /(\bS1\b|\bS2D?\b|\bp\d{1,3}%|\bpre-radar\b|\bpercentile\b|\bXL[UIPEFVBYKC]\b|\bXLRE\b|\bIBB\b|\bXBI\b)/;
+const symbolMarked = (sent, t) =>
+  new RegExp(`(\\*\\*|\\$|·\\s*)${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(sent);
+// Context is judged within ±40 chars of the token (same technique as check
+// 2), not sentence-wide: "(US/EU data expected 2026)" in a sentence that also
+// says "at p24%" is an acronym, not a ticker.
+const NEAR = 40;
+const unknownCtx = new Map(); // ticker -> {hard: bool}
+for (const sent of sentences) {
+  for (const t of tickersIn(sent)) {
+    if (facts.has(t)) continue;
+    const cur = unknownCtx.get(t) ?? { hard: false };
+    const re = new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+    let m;
+    while ((m = re.exec(sent)) !== null) {
+      const window = sent.slice(Math.max(0, m.index - NEAR), m.index + t.length + NEAR);
+      if (TICKER_CONTEXT_RE.test(window)) cur.hard = true;
+    }
+    cur.hard = cur.hard || symbolMarked(sent, t);
+    unknownCtx.set(t, cur);
   }
+}
+for (const [t, { hard: isHard }] of unknownCtx) {
+  add(
+    isHard ? "HARD" : "SOFT",
+    isHard
+      ? `fabricated/unknown ticker "${t}" — named as a ticker in the commentary but not in ${csvName}`
+      : `unknown uppercase token "${t}" — not in ${csvName}; acronym or a fabricated ticker? (non-blocking: no signal/percentile context)`,
+  );
 }
 
 // ---- Check 2: percentile mismatches ("TICKER … pNN%") -----------------------
